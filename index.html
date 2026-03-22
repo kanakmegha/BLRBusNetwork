@@ -4,7 +4,44 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>blrtransport</title>
+    
+    <!-- Primary SEO -->
+    <title>BLR Transit: Bangalore Bus & Metro Route Finder | BMTC Route Search</title>
+    <meta name="description" content="Find the best BMTC bus routes and Namma Metro directions in Bangalore. Fast, accurate, and human-readable route finder for Bangalore public transport." />
+    <meta name="keywords" content="Bangalore bus routes, BMTC route finder, Namma Metro map, Bangalore transit, bus timings Bangalore, Bangalore public transport" />
+    <meta name="author" content="BLR Transit" />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://blr-bus-network.vercel.app/" />
+    <meta property="og:title" content="BLR Transit: Bangalore Bus & Metro Route Finder" />
+    <meta property="og:description" content="Fast, accurate, and human-readable route finder for Bangalore BMTC buses and Namma Metro." />
+    <meta property="og:image" content="https://blr-bus-network.vercel.app/og-image.png" />
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content="https://blr-bus-network.vercel.app/" />
+    <meta property="twitter:title" content="BLR Transit: Bangalore Bus & Metro Route Finder" />
+    <meta property="twitter:description" content="Fast, accurate, and human-readable route finder for Bangalore BMTC buses and Namma Metro." />
+    <meta property="twitter:image" content="https://blr-bus-network.vercel.app/og-image.png" />
+
+    <!-- Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "BLR Transit",
+      "operatingSystem": "Web",
+      "applicationCategory": "Public Transport Tool",
+      "description": "Fast and accurate route finder for Bangalore BMTC buses and Namma Metro.",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "INR"
+      }
+    }
+    </script>
+
     <script
       src="https://maps.googleapis.com/maps/api/js?key=%VITE_GOOGLE_MAPS_API_KEY%&libraries=places"
     ></script>

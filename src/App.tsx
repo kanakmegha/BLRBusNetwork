@@ -9,7 +9,7 @@ import type { PathResult, TransitFilter } from "./engine/types";
 import "./App.css";
 
 function App() {
-  const { isReady, stops, findRoute, findNearestStop, dataManager } = useTransit();
+  const { isReady, error, stops, findRoute, findNearestStop, dataManager } = useTransit();
   const [results, setResults] = useState<PathResult[]>([]);
   const [selectedPath, setSelectedPath] = useState<PathResult | null>(null);
   const [stopMap, setStopMap] = useState<Map<string, any>>(new Map());
@@ -23,6 +23,33 @@ function App() {
     lng: 77.5946,
   });
   const [destStopName, setDestStopName] = useState<string | null>(null);
+
+  if (error) {
+    return (
+      <div className="h-screen w-screen bg-[#0a0a0a] flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-[#1e1e1e] border border-red-500/20 rounded-[32px] p-10 text-center shadow-[0_32px_64px_-16px_rgba(255,0,0,0.1)]">
+          <div className="w-20 h-20 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
+            <svg className="w-10 h-10 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h2 className="text-2xl font-black text-white mb-2 tracking-tight">Data Load Failed</h2>
+          <p className="text-gray-400 text-sm mb-8 leading-relaxed">
+            {error}
+          </p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="w-full bg-white text-black font-black py-4 rounded-2xl hover:bg-gray-200 transition-colors uppercase tracking-widest text-xs"
+          >
+            Retry Connection
+          </button>
+          <p className="mt-6 text-[10px] text-gray-600 uppercase tracking-widest font-bold">
+            BLR Transit Diagnostic System
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const [isSearching, setIsSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
@@ -146,6 +173,9 @@ function App() {
                 : "🚇 Switch to Schematic View"}
             </button>
 
+            <h1 className="sr-only">
+              BLR Transit: Find Bangalore BMTC Bus Routes and Metro Directions
+            </h1>
             <div className="absolute top-6 left-1/2 -translate-x-1/2 z-[100] flex flex-col items-center gap-4 w-full px-4 max-w-2xl">
               <SearchBox
                 stops={stops}

@@ -18,13 +18,24 @@ export class DataManager {
     private db: IDBDatabase | null = null;
 
     async init() {
-        // 1. Load data from public dir
-        const metroStops = await (await fetch("/data/metro_stops.json")).json();
-        const metroRoutes = await (await fetch("/data/metro_routes.json"))
-            .json();
-        const bmtcStops = await (await fetch("/data/bmtc_stops.json")).json();
-        const bmtcRoutes = await (await fetch("/data/bmtc_routes.json")).json();
-        const bmtcTrips = await (await fetch("/data/bmtc_trips.json")).json();
+        // 1. Health Check & Load data from public dir
+        const fetchWithCheck = async (url: string) => {
+            const response = await fetch(url);
+            const text = await response.text();
+            if (text.startsWith("version https://git-lfs.github.com/spec/v1")) {
+                throw new Error(`LFS Download Failed for ${url} - Check Vercel Bandwidth`);
+            }
+            console.log(`DataManager: ${url} loaded (${(text.length / 1024 / 1024).toFixed(2)} MB)`);
+            return JSON.parse(text);
+        };
+
+        const [metroStops, metroRoutes, bmtcStops, bmtcRoutes, bmtcTrips] = await Promise.all([
+            fetchWithCheck("/data/metro_stops.json"),
+            fetchWithCheck("/data/metro_routes.json"),
+            fetchWithCheck("/data/bmtc_stops.json"),
+            fetchWithCheck("/data/bmtc_routes.json"),
+            fetchWithCheck("/data/bmtc_trips.json")
+        ]);
 
         // 2. Index stations
         metroStops.forEach((s: any) => this.stops.set(s.stop_id, s));

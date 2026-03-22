@@ -6,14 +6,20 @@ import type { Stop, TransitFilter } from "../engine/types";
 export function useTransit() {
     const [dataManager] = useState(() => new DataManager());
     const [isReady, setIsReady] = useState(false);
+    const [error, setError] = useState<string | null>(null);
     const engine = useMemo(() => new RaptorEngine(dataManager), [dataManager]);
     const [stops, setStops] = useState<Stop[]>([]);
 
     useEffect(() => {
         async function init() {
-            await dataManager.init();
-            setStops(dataManager.getAllStops());
-            setIsReady(true);
+            try {
+                await dataManager.init();
+                setStops(dataManager.getAllStops());
+                setIsReady(true);
+            } catch (err: any) {
+                console.error("Transit Data Initialization Error:", err);
+                setError(err.message || "Failed to initialize transit data");
+            }
         }
         init();
     }, [dataManager]);
@@ -43,5 +49,5 @@ export function useTransit() {
         [dataManager],
     );
 
-    return { isReady, stops, findRoute, findNearestStop, dataManager };
+    return { isReady, error, stops, findRoute, findNearestStop, dataManager };
 }
