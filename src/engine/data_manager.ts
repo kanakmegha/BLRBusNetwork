@@ -21,12 +21,21 @@ export class DataManager {
         // 1. Health Check & Load data from public dir
         const fetchWithCheck = async (url: string) => {
             const response = await fetch(url);
-            const text = await response.text();
-            if (text.startsWith("version https://git-lfs.github.com/spec/v1")) {
-                throw new Error(`LFS Download Failed for ${url} - Check Vercel Bandwidth`);
+            const text = (await response.text()).trim();
+            
+            // Comprehensive LFS check
+            if (text.startsWith("version ") && text.includes("git-lfs")) {
+                throw new Error(`Data bandwidth exceeded (LFS pointer detected for ${url.split('/').pop()}). Please check Vercel LFS billing.`);
             }
-            console.log(`DataManager: ${url} loaded (${(text.length / 1024 / 1024).toFixed(2)} MB)`);
-            return JSON.parse(text);
+
+            try {
+                const data = JSON.parse(text);
+                console.log(`DataManager: ${url} loaded (${(text.length / 1024 / 1024).toFixed(2)} MB)`);
+                return data;
+            } catch (e) {
+                console.error(`Malformed JSON at ${url}:`, text.slice(0, 100));
+                throw new Error(`Corrupted Data: ${url.split('/').pop()} is not a valid JSON file.`);
+            }
         };
 
         const [metroStops, metroRoutes, bmtcStops, bmtcRoutes, bmtcTrips] = await Promise.all([
