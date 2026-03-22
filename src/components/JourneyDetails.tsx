@@ -8,10 +8,11 @@ interface JourneyDetailsProps {
   selectedPath: PathResult;
   stopMap: Map<string, Stop>;
   dataManager: DataManager;
+  onBusClick: (busNumber: string) => void;
   onClose: () => void;
 }
 
-export function JourneyDetails({ selectedPath, stopMap, dataManager, onClose }: JourneyDetailsProps) {
+export function JourneyDetails({ selectedPath, stopMap, dataManager, onBusClick, onClose }: JourneyDetailsProps) {
   const [expandedSegments, setExpandedSegments] = useState<Set<number>>(new Set());
 
   const toggleExpand = (idx: number) => {
@@ -85,7 +86,12 @@ export function JourneyDetails({ selectedPath, stopMap, dataManager, onClose }: 
                         
                         return (
                           <div className="flex items-center gap-1 text-[9px] font-black leading-none">
-                            <span className="bg-purple-600/80 px-1.5 py-0.5 rounded shadow-sm">{badgeText}{more}</span>
+                            <span 
+                              onClick={() => onBusClick(primary)}
+                              className="bg-purple-600/80 px-1.5 py-0.5 rounded shadow-sm hover:bg-purple-500 cursor-pointer transition-colors"
+                            >
+                              {badgeText}{more}
+                            </span>
                             {others.length > 0 && (
                               <Popover.Root>
                                 <Popover.Trigger asChild>
@@ -101,9 +107,20 @@ export function JourneyDetails({ selectedPath, stopMap, dataManager, onClose }: 
                                     <div className="flex flex-col gap-2">
                                       <div className="text-[9px] uppercase tracking-widest font-black text-gray-500 mb-1 border-b border-white/5 pb-1">Alternatives</div>
                                       <div className="flex flex-wrap gap-2">
-                                        <span className="bg-purple-600 text-white px-2 py-0.5 rounded text-[10px] font-black">{primary}</span>
+                                        <span 
+                                          onClick={() => onBusClick(primary)}
+                                          className="bg-purple-600 text-white px-2 py-0.5 rounded text-[10px] font-black cursor-pointer hover:bg-purple-500 transition-colors"
+                                        >
+                                          {primary}
+                                        </span>
                                         {others.map(n => (
-                                          <span key={n} className="bg-white/5 text-gray-300 px-2 py-0.5 rounded text-[10px] font-black border border-white/5">{n}</span>
+                                          <span 
+                                            key={n} 
+                                            onClick={() => onBusClick(n)}
+                                            className="bg-white/5 text-gray-300 px-2 py-0.5 rounded text-[10px] font-black border border-white/5 cursor-pointer hover:bg-white/10 transition-colors"
+                                          >
+                                            {n}
+                                          </span>
                                         ))}
                                       </div>
                                     </div>
@@ -123,20 +140,26 @@ export function JourneyDetails({ selectedPath, stopMap, dataManager, onClose }: 
               </div>
 
               {/* Stop Names */}
-              <div className="space-y-0.5">
-                <div className="text-sm text-white font-bold leading-tight">
-                  {stopMap.get(seg.fromStopId)?.stop_name}
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                  <div className="text-sm text-white font-bold leading-tight truncate">
+                    {stopMap.get(seg.fromStopId)?.stop_name}
+                  </div>
                 </div>
+                
+                <div className="flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
+                  <div className="text-[11px] text-gray-400 font-bold leading-tight truncate">
+                    to {stopMap.get(seg.toStopId)?.stop_name}
+                  </div>
+                </div>
+
                 {seg.routeId !== "WALKING" && seg.routeLongName && (
-                  <div className="text-[10px] text-purple-400/80 font-medium truncate max-w-[200px]">
+                  <div className="pl-3.5 text-[9px] text-purple-400/80 font-medium truncate max-w-[240px] uppercase tracking-wider">
                     {seg.routeLongName}
                   </div>
                 )}
-                <div className="text-[10px] text-gray-400 font-bold italic opacity-80">
-                  {stopMap.get(seg.fromStopId)?.stop_name === stopMap.get(seg.toStopId)?.stop_name
-                    ? `Transit within ${stopMap.get(seg.toStopId)?.stop_name}`
-                    : `to ${stopMap.get(seg.toStopId)?.stop_name || "Destination"}`}
-                </div>
               </div>
 
               {/* Metadata Row */}

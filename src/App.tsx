@@ -22,6 +22,9 @@ function App() {
     lng: 77.5946,
   });
   const [destStopName, setDestStopName] = useState<string | null>(null);
+  const [recenterCount, setRecenterCount] = useState(0);
+  const [explorerRoute, setExplorerRoute] = useState<string | null>(null);
+  const [explorerPath, setExplorerPath] = useState<any[]>([]);
 
   if (error) {
     return (
@@ -77,12 +80,12 @@ function App() {
   const handleSearch = async (fromValue: string, toValue: string) => {
     if (!fromValue || !toValue) return;
     
-    // Safety Net: 5-character LFS check ('versi' check)
+    // Safety Net: Git LFS pointer check
     try {
       const response = await fetch("/data/metro_stops.json");
       const text = await response.text();
-      if (text.trim().startsWith("versi")) {
-        alert("Data Error: LFS Pointer detected. Perform a Clean Build.");
+      if (text.trim().startsWith("version https://git-lfs")) {
+        alert("Data Sync Error: LFS Pointer detected. Perform a Clean Build.");
         return;
       }
     } catch (e) {
@@ -131,6 +134,12 @@ function App() {
     // LOCKDOWN: no auto-search here
   };
 
+  const handleBusClick = (busNumber: string) => {
+    setExplorerRoute(busNumber);
+    const path = dataManager.getRoutePath(busNumber);
+    setExplorerPath(path);
+  };
+
   return (
     <main className="relative w-full h-screen bg-[#121212] flex flex-col items-center justify-center overflow-hidden">
       {error ? (
@@ -177,18 +186,32 @@ function App() {
                   stops={stops}
                   center={mapCenter}
                   selectedPath={selectedPath}
+                  allPaths={results}
+                  explorerPath={explorerPath}
+                  recenterCount={recenterCount}
                   onStopSelect={(s) => handleSelectFromMap(s.stop_id, "FROM")}
                 />
               )}
 
-            <button
-              onClick={() => setShowMetroMap(!showMetroMap)}
-              className="absolute bottom-10 left-10 z-[100] bg-[#1e1e1e]/90 backdrop-blur-md px-6 py-3 rounded-full border border-purple-500/50 text-white font-bold text-sm shadow-2xl hover:bg-purple-600 transition-all flex items-center gap-2"
-            >
-              {showMetroMap
-                ? "🗺️ Switch to Google Map"
-                : "🚇 Switch to Schematic View"}
-            </button>
+            <div className="absolute bottom-10 left-10 z-[100] flex flex-col gap-3">
+              <button
+                onClick={() => setShowMetroMap(!showMetroMap)}
+                className="bg-[#1e1e1e]/90 backdrop-blur-md px-6 py-3 rounded-full border border-purple-500/50 text-white font-bold text-sm shadow-2xl hover:bg-purple-600 transition-all flex items-center gap-2"
+              >
+                {showMetroMap
+                  ? "🗺️ Switch to Google Map"
+                  : "🚇 Switch to Schematic View"}
+              </button>
+
+              {selectedPath && !showMetroMap && (
+                <button
+                  onClick={() => setRecenterCount(prev => prev + 1)}
+                  className="bg-emerald-500/90 backdrop-blur-md px-6 py-3 rounded-full border border-emerald-400/50 text-white font-bold text-sm shadow-2xl hover:bg-emerald-600 transition-all flex items-center gap-2 animate-in fade-in slide-in-from-bottom-4 duration-500"
+                >
+                  🎯 Center on Route
+                </button>
+              )}
+            </div>
 
             {isCalculating && (
               <div className="absolute inset-0 z-[200] bg-[#0a0a0a]/40 backdrop-blur-[2px] flex items-center justify-center rounded-[32px] pointer-events-none">
@@ -202,7 +225,7 @@ function App() {
             <h1 className="sr-only">
               BLR Transit: Find Bangalore BMTC Bus Routes and Metro Directions
             </h1>
-            <div className="absolute top-6 left-1/2 -translate-x-1/2 z-[100] flex flex-col items-center gap-4 w-full px-4 max-w-2xl">
+            <div className="absolute top-8 left-8 z-[120] flex flex-col items-start gap-4">
               <SearchBox
                 stops={stops}
                 onSearch={handleSearch}
@@ -219,8 +242,33 @@ function App() {
               results={results}
               selectedCriteria={selectedCriteria}
               onSelect={(path) => setSelectedPath(path)}
+              onBusClick={handleBusClick}
               dataManager={dataManager}
             />
+
+            {explorerRoute && (
+              <div className="absolute top-40 left-1/2 -translate-x-1/2 z-[110] bg-[#1e1e1e]/90 backdrop-blur-md px-6 py-4 rounded-3xl border border-green-500/30 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.5)] flex items-center gap-6 animate-in fade-in slide-in-from-top-8 duration-500">
+                <div className="flex flex-col">
+                  <span className="text-[10px] text-green-500 font-black uppercase tracking-[0.2em] mb-1">Route Explorer</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                    <span className="text-white font-black text-2xl tracking-tighter">Bus {explorerRoute}</span>
+                  </div>
+                </div>
+                <div className="w-px h-10 bg-white/10" />
+                <button 
+                  onClick={() => {
+                    setExplorerRoute(null);
+                    setExplorerPath([]);
+                  }}
+                  className="group relative w-12 h-12 bg-white/5 hover:bg-red-500/20 rounded-2xl flex items-center justify-center transition-all duration-300 active:scale-90"
+                >
+                  <svg className="w-6 h-6 text-white group-hover:text-red-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            )}
 
             {(isSearching || (hasSearched && results.length === 0)) && (
               <div className="absolute bottom-32 left-1/2 -translate-x-1/2 z-[110] bg-[#1e1e1e]/90 backdrop-blur-md px-6 py-4 rounded-2xl border border-white/10 shadow-2xl flex flex-col items-center gap-2">
@@ -252,6 +300,7 @@ function App() {
                 selectedPath={selectedPath}
                 stopMap={stopMap}
                 dataManager={dataManager}
+                onBusClick={handleBusClick}
                 onClose={() => setSelectedPath(null)}
               />
             )}

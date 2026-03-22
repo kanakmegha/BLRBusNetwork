@@ -23,9 +23,9 @@ export class DataManager {
             const response = await fetch(url);
             const text = (await response.text()).trim();
             
-            // 5-character LFS check ('versi' check)
-            if (text.startsWith("versi")) {
-                throw new Error(`Data Error: LFS Pointer detected for ${url.split('/').pop()}. Perform a Clean Build (VERCEL_GIT_LFS_ENABLED=1).`);
+            // Harden LFS check (look for full pointer string)
+            if (text.startsWith("version https://git-lfs")) {
+                throw new Error(`Data Sync Error: LFS Pointer detected for ${url.split('/').pop()}. This usually means Vercel Bandwidth is exceeded. Perform a Clean Build.`);
             }
 
             try {
@@ -504,5 +504,35 @@ export class DataManager {
             }
         }
         return Array.from(busNumbers);
+    }
+
+    getRoutePath(busNumber: string): Stop[] {
+        // Find all routes that match this bus number (trimmed)
+        const relevantRouteIds = Array.from(this.routes.keys()).filter(rid => {
+            const shortName = this.getRouteShortName(rid);
+            return shortName.toUpperCase() === busNumber.toUpperCase() || 
+                   rid.toUpperCase() === busNumber.toUpperCase();
+        });
+
+        if (relevantRouteIds.length === 0) return [];
+
+        // Find the route with the most stops (longest trip representation)
+        let bestRouteId = relevantRouteIds[0];
+        let maxStops = 0;
+
+        relevantRouteIds.forEach(rid => {
+            const route = this.routes.get(rid);
+            if (route && route.stops.length > maxStops) {
+                maxStops = route.stops.length;
+                bestRouteId = rid;
+            }
+        });
+
+        const bestRoute = this.routes.get(bestRouteId);
+        if (!bestRoute) return [];
+
+        return bestRoute.stops
+            .map(sid => this.stops.get(sid))
+            .filter((s): s is Stop => s !== undefined);
     }
 }

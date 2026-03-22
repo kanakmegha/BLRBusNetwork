@@ -28,7 +28,7 @@ export class RaptorEngine {
         if (filter === "MIN_FARE") {
             interchangePenalty = 1800; // Transfers are expensive (30 mins)
         } else if (filter === "MIN_INTERCHANGES") {
-            interchangePenalty = 7200; // 120 mins penalty as ordered (+7200 score)
+            interchangePenalty = 6000; // 100-minute 'Virtual Penalty' as ordered
         }
 
         // Map stop_id to numeric index for flat array
@@ -53,7 +53,8 @@ export class RaptorEngine {
         earliestArrival[getFlatIdx(0, startIdx)] = startTime;
         earliestCost[getFlatIdx(0, startIdx)] = 0;
         const markedStops = new Set<string>([startStopId]);
-        let bestTargetArrival = Infinity;
+        let bestTargetArrival = Infinity; // Physical time
+        let bestTargetCost = Infinity;
         const targetIdx = stopToIndex.get(destinationStopId)!;
 
         // Pre-populate route stop indices for maximum speed
@@ -147,15 +148,21 @@ export class RaptorEngine {
 
                             // 2. Decision Logic (Pruning)
                             let shouldUpdate = false;
-                            
                             if (filter === "MIN_FARE") {
+                                // MANDATORY: Mathematically prefer cheaper even if significantly slower
                                 if (totalCost < earliestCost[flatIdxK]) {
                                     shouldUpdate = true;
                                 } else if (totalCost === earliestCost[flatIdxK] && arrival < earliestArrival[flatIdxK]) {
-                                    shouldUpdate = true; // Tie-breaker: faster time
+                                    shouldUpdate = true; 
+                                }
+                            } else if (filter === "MIN_INTERCHANGES") {
+                                // Penalize transfer legs by adding arrival 'weight'
+                                const transferWeight = (k - 1) * interchangePenalty;
+                                if (arrival + transferWeight < earliestArrival[flatIdxK] + ((k-2 >= 0) ? (k-2)*interchangePenalty : 0)) {
+                                    shouldUpdate = true;
                                 }
                             } else {
-                                if (arrival < earliestArrival[flatIdxK] && arrival < bestTargetArrival) {
+                                if (arrival < earliestArrival[flatIdxK]) {
                                     shouldUpdate = true;
                                 }
                             }
@@ -172,6 +179,7 @@ export class RaptorEngine {
                                 
                                 if (sIdx === targetIdx) {
                                     bestTargetArrival = Math.min(bestTargetArrival, arrival);
+                                    bestTargetCost = Math.min(bestTargetCost, totalCost);
                                 }
                             }
                         }
@@ -344,21 +352,12 @@ export class RaptorEngine {
             }
         }
 
-        return this.filterPareto(results, filter).sort((a, b) => {
-            if (filter === "MIN_FARE") {
-                if (a.totalFare !== b.totalFare) return a.totalFare - b.totalFare;
-                return a.totalTime - b.totalTime;
-            }
-            if (filter === "MIN_INTERCHANGES") {
-                if (a.transfers !== b.transfers) return a.transfers - b.transfers;
-                return a.totalTime - b.totalTime;
-            }
-            return a.totalTime - b.totalTime;
-        }).slice(0, 5);
+        return this.filterPareto(results, filter).slice(0, 3);
     }
 
     private filterPareto(paths: PathResult[], filter: TransitFilter): PathResult[] {
-        return paths.filter((p1, i) =>
+        // Step 1: Pareto filtering
+        const candidates = paths.filter((p1, i) =>
             !paths.some((p2, j) => {
                 if (i === j) return false;
                 
@@ -372,6 +371,53 @@ export class RaptorEngine {
                 return p2.totalTime <= p1.totalTime && p2.transfers < p1.transfers;
             })
         );
+
+        // Step 2: Diversity Filter (Task 2)
+        // If two paths are 95% identical (same stops/buses), keep the faster one.
+        const diverse: PathResult[] = [];
+        for (const p of candidates) {
+            let isDuplicate = false;
+            for (const d of diverse) {
+                if (this.isPathHighlySimilar(p, d)) {
+                    isDuplicate = true;
+                    break;
+                }
+            }
+            if (!isDuplicate) diverse.push(p);
+        }
+
+        return diverse.sort((a, b) => {
+            if (filter === "MIN_FARE") {
+                if (a.totalFare !== b.totalFare) return a.totalFare - b.totalFare;
+                return a.totalTime - b.totalTime;
+            }
+            if (filter === "MIN_INTERCHANGES") {
+                if (a.transfers !== b.transfers) return a.transfers - b.transfers;
+                return a.totalTime - b.totalTime;
+            }
+            return a.totalTime - b.totalTime;
+        });
+    }
+
+    private isPathHighlySimilar(p1: PathResult, p2: PathResult): boolean {
+        // Simple heuristic: same primary route IDs and same number of segments
+        if (p1.segments.length !== p2.segments.length) return false;
+        
+        let matchCount = 0;
+        for (let i = 0; i < p1.segments.length; i++) {
+            const s1 = p1.segments[i];
+            const s2 = p2.segments[i];
+            // If route names are different (like 378 vs 500-D), it's diverse enough
+            if (s1.routeName !== s2.routeName) return false;
+            
+            // If they are on the same route, check if the stops are identical
+            if (s1.fromStopId === s2.fromStopId && s1.toStopId === s2.toStopId) {
+                matchCount++;
+            }
+        }
+        
+        // If > 95% of segments match exactly (in our case of few segments, if all match)
+        return matchCount / p1.segments.length > 0.95;
     }
 
     private findEarliestTrip(

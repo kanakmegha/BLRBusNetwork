@@ -7,10 +7,11 @@ interface RouteResultsProps {
     results: PathResult[];
     selectedCriteria: "FASTEST" | "MIN_FARE" | "MIN_INTERCHANGES";
     onSelect: (path: PathResult) => void;
+    onBusClick: (busNumber: string) => void;
     dataManager: DataManager;
 }
 
-export function RouteResults({ results, selectedCriteria, onSelect, dataManager }: RouteResultsProps) {
+export function RouteResults({ results, selectedCriteria, onSelect, onBusClick, dataManager }: RouteResultsProps) {
     const sortedResults = useMemo(() => {
         return [...results].sort((a, b) => {
             if (selectedCriteria === "FASTEST") return a.totalTime - b.totalTime;
@@ -81,7 +82,18 @@ export function RouteResults({ results, selectedCriteria, onSelect, dataManager 
                                                     seg.stops?.map(s => s.stop_id) || []
                                                 );
                                                 const raw = nums.length > 0 ? nums[0] : dataManager.getDisplayNumber(seg.routeId).replace('Bus ', '');
-                                                return raw.split(' ')[0];
+                                                const busNum = raw.split(' ')[0];
+                                                return (
+                                                    <span 
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            onBusClick(busNum);
+                                                        }}
+                                                        className="hover:underline cursor-pointer"
+                                                    >
+                                                        {busNum}
+                                                    </span>
+                                                );
                                             })()}
                                     </div>
                                     {sidx < result.segments.length - 1 && (
