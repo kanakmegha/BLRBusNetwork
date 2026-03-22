@@ -72,7 +72,7 @@ export function RouteResults({ results, sortBy, onSelect }: RouteResultsProps) {
                                     >
                                         {seg.routeId === "WALKING"
                                             ? "W"
-                                            : seg.routeId}
+                                            : (seg.routeName || seg.routeId).replace('Bus ', '')}
                                     </div>
                                     {sidx < result.segments.length - 1 && (
                                         <span className="text-gray-600">→</span>
@@ -108,7 +108,7 @@ export function RouteResults({ results, sortBy, onSelect }: RouteResultsProps) {
                                     />
                                     <div className="flex justify-between items-start">
                                         <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                                            {seg.routeId}
+                                            {seg.routeName || seg.routeId}
                                             {seg.stopCount
                                                 ? ` • ${seg.stopCount} stops`
                                                 : ""}

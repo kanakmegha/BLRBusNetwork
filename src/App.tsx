@@ -4,7 +4,8 @@ import { MetroMap } from "./components/MetroMap";
 import { SearchBox } from "./components/SearchBox";
 import { RouteResults } from "./components/RouteResults";
 import { useTransit } from "./hooks/useTransit";
-import type { PathResult } from "./engine/types";
+import type { PathResult, TransitFilter } from "./engine/types";
+import { formatSecondsAsTime } from "./utils/geo";
 import "./App.css";
 
 function App() {
@@ -12,6 +13,7 @@ function App() {
   const [results, setResults] = useState<PathResult[]>([]);
   const [selectedPath, setSelectedPath] = useState<PathResult | null>(null);
   const [stopMap, setStopMap] = useState<Map<string, any>>(new Map());
+  const [activeFilter, setActiveFilter] = useState<TransitFilter>("Min Time");
   const [showMetroMap, setShowMetroMap] = useState(false);
   const [fromStopId, setFromStopId] = useState("");
   const [toStopId, setToStopId] = useState("");
@@ -46,27 +48,32 @@ function App() {
     }
   }, [isReady, findNearestStop, fromStopId, stops]);
 
-  const handleSearch = async (from: string, to: string) => {
+  const handleSearch = async (from: string, to: string, filterOverride?: TransitFilter) => {
     if (!from || !to) return;
     setIsSearching(true);
     setHasSearched(true);
-    const now = new Date();
-    const timeStr = `${now.getHours().toString().padStart(2, "0")}:${
-      now.getMinutes().toString().padStart(2, "0")
-    }:00`;
-
-    const paths = await findRoute(from, to, timeStr);
-    console.log(`App: Found ${paths.length} paths`);
-    setResults(paths);
-    if (paths.length > 0) {
-      setSelectedPath(paths[0]);
+    setResults([]);
+    const filter = filterOverride || activeFilter;
+    const pathResults = await findRoute(from, to, "08:00:00", filter);
+    setResults(pathResults);
+    if (pathResults.length > 0) {
+      setSelectedPath(pathResults[0]);
     } else {
       setSelectedPath(null);
-      console.warn(
-        "App: No routes found for the given origin/destination/time",
-      );
     }
     setIsSearching(false);
+  };
+
+  const handleSortChange = (sort: "TIME" | "FARE" | "TRANSFERS") => {
+    setSortBy(sort);
+    let filter: TransitFilter = "Min Time";
+    if (sort === "FARE") filter = "Min Fare";
+    if (sort === "TRANSFERS") filter = "Min Interchange";
+    setActiveFilter(filter);
+    
+    if (fromStopId && toStopId) {
+      handleSearch(fromStopId, toStopId, filter);
+    }
   };
 
   const handleDestinationPlaceSelect = (lat: number, lng: number) => {
@@ -139,16 +146,18 @@ function App() {
                 : "🚇 Switch to Schematic View"}
             </button>
 
-            <SearchBox
-              stops={stops}
-              onSearch={handleSearch}
-              onPlaceSelect={handleDestinationPlaceSelect}
-              onSortChange={(s) => setSortBy(s)}
-              sortBy={sortBy}
-              initialFrom={fromStopId}
-              initialTo={toStopId}
-              destStopName={destStopName}
-            />
+            <div className="absolute top-6 left-1/2 -translate-x-1/2 z-[100] flex flex-col items-center gap-4 w-full px-4 max-w-2xl">
+              <SearchBox
+                stops={stops}
+                onSearch={handleSearch}
+                onPlaceSelect={handleDestinationPlaceSelect}
+                onSortChange={handleSortChange}
+                sortBy={sortBy}
+                initialFrom={fromStopId}
+                initialTo={toStopId}
+                destStopName={destStopName}
+              />
+            </div>
 
             <RouteResults
               results={results}
@@ -182,34 +191,93 @@ function App() {
             )}
 
             {selectedPath && (
-              <div className="absolute top-6 right-6 z-[100] w-80 bg-[#1e1e1e]/95 backdrop-blur-md p-6 rounded-2xl border border-purple-500/30 shadow-2xl">
-                <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-lg font-bold text-white">
-                    Journey Details
-                  </h2>
+              <div className="absolute top-6 right-6 z-[100] w-96 bg-[#1e1e1e]/95 backdrop-blur-xl p-8 rounded-[32px] border border-white/5 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.5)] overflow-hidden">
+                <div className="flex justify-between items-start mb-8">
+                  <div>
+                    <h2 className="text-gray-400 text-[10px] uppercase tracking-[0.2em] font-black mb-1">
+                      Total Journey Time
+                    </h2>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-5xl font-black text-white tracking-tighter">
+                        {Math.round(selectedPath.totalTime / 60)}
+                      </span>
+                      <span className="text-xl font-bold text-purple-500 uppercase">
+                        min
+                      </span>
+                    </div>
+                  </div>
                   <button
                     onClick={() => setSelectedPath(null)}
-                    className="text-gray-500 hover:text-white"
+                    className="p-2 hover:bg-white/5 rounded-full transition-colors text-gray-500 hover:text-white"
                   >
-                    ✕
+                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
                   </button>
                 </div>
-                <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 scrollbar-hide">
+
+                <div className="space-y-0 relative">
+                  {/* Timeline track */}
+                  <div className="absolute left-[11px] top-4 bottom-4 w-[2px] bg-gradient-to-b from-purple-500 via-blue-500 to-emerald-500 opacity-20" />
+
                   {selectedPath.segments.map((seg, idx) => (
                     <div
                       key={idx}
-                      className="relative pl-6 border-l-2 border-[#333]"
+                      className="relative pl-10 pb-10 last:pb-0 group"
                     >
-                      <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-purple-500 border-2 border-[#1e1e1e]">
-                      </div>
-                      <div className="text-xs font-bold text-purple-400 mb-1">
-                        {seg.routeId}
-                      </div>
-                      <div className="text-sm text-white font-medium">
-                        {stopMap.get(seg.fromStopId)?.stop_name}
-                      </div>
-                      <div className="text-[10px] text-gray-500 mt-1">
-                        to {stopMap.get(seg.toStopId)?.stop_name}
+                      {/* Node point */}
+                      <div className={`absolute left-0 top-1 w-6 h-6 rounded-full border-4 border-[#1e1e1e] z-10 shadow-lg transition-transform group-hover:scale-125
+                        ${seg.routeId === "WALKING" ? "bg-gray-600" : "bg-purple-600"}`}
+                      />
+
+                      <div className="flex flex-col gap-2">
+                        {/* Time and Title Row */}
+                        <div className="flex justify-between items-center">
+                          <span className={`text-[10px] font-black px-2 py-0.5 rounded shadow-sm uppercase tracking-wider
+                            ${seg.routeId === "WALKING" ? "bg-gray-800 text-gray-400" : "bg-purple-900/50 text-purple-300"}`}>
+                            {seg.routeName || seg.routeId}
+                          </span>
+                          <span className="text-xs font-mono text-gray-500 font-bold bg-white/5 px-2 py-0.5 rounded">
+                            {formatSecondsAsTime(seg.departureTime).slice(0, 5)}
+                          </span>
+                        </div>
+
+                        {/* Stop Names */}
+                        <div className="space-y-0.5">
+                          <div className="text-sm text-white font-bold leading-tight">
+                            {stopMap.get(seg.fromStopId)?.stop_name}
+                          </div>
+                          <div className="text-[10px] text-gray-500 font-medium italic">
+                            to {stopMap.get(seg.toStopId)?.stop_name}
+                          </div>
+                        </div>
+
+                        {/* Metadata Row */}
+                        <div className="flex items-center gap-3 mt-1">
+                          <div className="flex items-center gap-1.5 bg-white/5 px-2.5 py-1 rounded-full border border-white/5">
+                            <span className="text-[10px] text-white font-bold">
+                              {Math.round((seg.arrivalTime - seg.departureTime) / 60)} min
+                            </span>
+                          </div>
+                          
+                          {seg.routeId !== "WALKING" ? (
+                            <div className="flex items-center gap-1.5 bg-white/5 px-2.5 py-1 rounded-full border border-white/5">
+                              <span className="text-[10px] text-gray-400 font-bold">
+                                {seg.stopCount} stops
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5 bg-white/5 px-2.5 py-1 rounded-full border border-white/5">
+                              <span className="text-[10px] text-gray-400 font-bold">
+                                {Math.round(seg.distance || 0)}m
+                              </span>
+                            </div>
+                          )}
+
+                          <span className="ml-auto text-xs font-mono text-gray-500 font-bold">
+                            Arr {formatSecondsAsTime(seg.arrivalTime).slice(0, 5)}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   ))}

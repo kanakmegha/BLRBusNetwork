@@ -20,6 +20,8 @@ export interface StopTime {
     seq: number;
     arrival: string; // HH:MM:SS
     departure: string; // HH:MM:SS
+    arrivalSec?: number; // Seconds since midnight
+    departureSec?: number; // Seconds since midnight
 }
 
 export interface Trip {
@@ -44,6 +46,8 @@ export interface PathResult {
     segments: PathSegment[];
 }
 
+export type TransitFilter = "Min Fare" | "Min Interchange" | "Min Time";
+
 export interface PathSegment {
     fromStopId: string;
     toStopId: string;
@@ -52,6 +56,7 @@ export interface PathSegment {
     toStopLat: number;
     toStopLon: number;
     routeId: string | "WALKING";
+    routeName?: string; // e.g. "Bus 378" or "Purple Line"
     tripId?: string;
     departureTime: number;
     arrivalTime: number;

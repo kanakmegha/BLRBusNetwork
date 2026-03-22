@@ -1,18 +1,17 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import { DataManager } from "../engine/data_manager";
 import { RaptorEngine } from "../engine/RaptorEngine";
-import type { Stop } from "../engine/types";
+import type { Stop, TransitFilter } from "../engine/types";
 
 export function useTransit() {
     const [dataManager] = useState(() => new DataManager());
-    const [engine, setEngine] = useState<RaptorEngine | null>(null);
     const [isReady, setIsReady] = useState(false);
+    const engine = useMemo(() => new RaptorEngine(dataManager), [dataManager]);
     const [stops, setStops] = useState<Stop[]>([]);
 
     useEffect(() => {
         async function init() {
             await dataManager.init();
-            setEngine(new RaptorEngine(dataManager));
             setStops(dataManager.getAllStops());
             setIsReady(true);
         }
@@ -20,9 +19,19 @@ export function useTransit() {
     }, [dataManager]);
 
     const findRoute = useCallback(
-        async (fromId: string, toId: string, time: string) => {
-            if (!engine) return [];
-            return await engine.findRoute(fromId, toId, time);
+        async (
+            startId: string,
+            destId: string,
+            startTime: string,
+            filter: TransitFilter = "Min Time",
+        ) => {
+            // engine is always defined due to useMemo and dataManager dependency
+            return await engine.findRoute(
+                startId,
+                destId,
+                startTime,
+                filter,
+            );
         },
         [engine],
     );

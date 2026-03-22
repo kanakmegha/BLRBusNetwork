@@ -1,25 +1,30 @@
 import type { DataManager } from "./data_manager";
-import type { PathResult, RaptorLabel, Stop, StopTime, Trip } from "./types";
+import type { PathResult, Stop, StopTime, TransitFilter, Trip } from "./types";
 import { FareCalculator } from "./fare_calculator";
 import { haversine } from "../utils/geo";
 
 export class RaptorEngine {
     private data: DataManager;
+    private routeStopIndices: Map<string, Map<string, number>> = new Map();
 
-    constructor(dataManager: DataManager) {
-        this.data = dataManager;
+    constructor(data: DataManager) {
+        this.data = data;
     }
 
     async findRoute(
         startStopId: string,
         destinationStopId: string,
         startTimeStr: string, // HH:MM:SS or HH:MM
+        filter: TransitFilter = "Min Time",
         maxRounds: number = 3,
     ): Promise<PathResult[]> {
         const startTime = this.timeToSeconds(startTimeStr);
         const stops = this.data.getAllStops();
         const numStops = stops.length;
         
+        let interchangePenalty = 300; // 5 mins
+        if (filter === "Min Fare") interchangePenalty = 600; // Transfers are expensive
+
         // Map stop_id to numeric index for flat array
         const stopToIndex = new Map<string, number>();
         stops.forEach((s, i) => stopToIndex.set(s.stop_id, i));
@@ -30,8 +35,9 @@ export class RaptorEngine {
         
         // Store preceding info only for reachable stops to save memory/initialization time
         const precedingStops = new Int32Array((maxRounds + 1) * numStops).fill(-1);
-        const precedingTrips = new Map<number, string>(); // index in flat array -> tripId
         const precedingRoutes = new Map<number, string>(); // index in flat array -> routeId
+        const precedingTrips = new Map<number, string>();
+        const boardingTimes = new Map<number, number>();
         const isWalking = new Uint8Array((maxRounds + 1) * numStops).fill(0);
 
         const getFlatIdx = (k: number, sIdx: number) => k * numStops + sIdx;
@@ -39,25 +45,39 @@ export class RaptorEngine {
         // Set start point
         const startIdx = stopToIndex.get(startStopId)!;
         arrivalTimes[getFlatIdx(0, startIdx)] = startTime;
-        let markedStops = new Set<string>([startStopId]);
+        const markedStops = new Set<string>([startStopId]);
         let bestTargetArrival = Infinity;
         const targetIdx = stopToIndex.get(destinationStopId)!;
 
+        // Pre-populate route stop indices for maximum speed
+        const allRoutes = this.data.getAllRoutes();
+        for (let i = 0; i < allRoutes.length; i++) {
+            const r = allRoutes[i];
+            if (!this.routeStopIndices.has(r.route_id)) {
+                const map = new Map<string, number>();
+                for (let j = 0; j < r.stops.length; j++) {
+                    map.set(r.stops[j], j);
+                }
+                this.routeStopIndices.set(r.route_id, map);
+            }
+        }
+
         const initialNearby = this.data.findNearbyStops(startStopId, 500);
-        initialNearby.forEach((ns: Stop & { distance: number }) => {
+        for (let i = 0; i < initialNearby.length; i++) {
+            const ns = initialNearby[i] as Stop & { distance: number };
             const walkTime = Math.floor(ns.distance / 1.1); // ~4km/h
             const nsIdx = stopToIndex.get(ns.stop_id)!;
             const flatIdx = getFlatIdx(0, nsIdx);
-            
+
             if (startTime + walkTime < arrivalTimes[flatIdx]) {
                 arrivalTimes[flatIdx] = startTime + walkTime;
                 precedingStops[flatIdx] = startIdx;
-                precedingTrips.set(flatIdx, "WALKING");
                 precedingRoutes.set(flatIdx, "WALKING");
+                boardingTimes.set(flatIdx, startTime);
                 isWalking[flatIdx] = 1;
                 markedStops.add(ns.stop_id);
             }
-        });
+        }
 
         // Pre-cache route stop indices for faster lookup
         const routeStopIndices = new Map<string, Map<string, number>>();
@@ -94,11 +114,10 @@ export class RaptorEngine {
 
             for (const [routeId, boardingStopId] of queue) {
                 const route = this.data.getRoute(routeId)!;
-                const trips = routeTripsMap.get(routeId) || [];
-                let currentTrip: (Trip & { boardingStop: string }) | null =
-                    null;
+                const trips = routeTripsMap.get(routeId)!;
+                let currentTrip: (Trip & { boardingStop: string; boardingTime: number }) | null = null;
 
-                const startIdxInRoute = routeStopIndices.get(routeId)!.get(boardingStopId)!;
+                const startIdxInRoute = this.getRouteStopIndex(routeId, boardingStopId);
 
                 for (let i = startIdxInRoute; i < route.stops.length; i++) {
                     const sid = route.stops[i];
@@ -106,9 +125,9 @@ export class RaptorEngine {
                     const flatIdxK = getFlatIdx(k, sIdx);
 
                     if (currentTrip) {
-                        const st: StopTime = currentTrip.stopTimes[i];
-                        if (st && st.stopId === sid) {
-                            const arrival = this.timeToSeconds(st.arrival);
+                        const st: StopTime | undefined = currentTrip.stopTimes[i];
+                        if (st && st.stopId === sid && st.departure) { // Safety check
+                            const arrival = st.arrivalSec || 0;
                             
                             // Optimized: only check against best arrival in previous rounds
                             let bestArrivalSoFar = arrivalTimes[getFlatIdx(k - 1, sIdx)];
@@ -117,8 +136,9 @@ export class RaptorEngine {
                             if (arrival < bestTargetArrival && arrival < bestArrivalSoFar) {
                                 arrivalTimes[flatIdxK] = arrival;
                                 precedingStops[flatIdxK] = stopToIndex.get(currentTrip.boardingStop)!;
-                                precedingTrips.set(flatIdxK, currentTrip.tripId);
                                 precedingRoutes.set(flatIdxK, routeId);
+                                precedingTrips.set(flatIdxK, currentTrip.tripId);
+                                boardingTimes.set(flatIdxK, currentTrip.boardingTime);
                                 isWalking[flatIdxK] = 0;
                                 markedStops.add(sid);
                                 
@@ -134,67 +154,63 @@ export class RaptorEngine {
                         const trip = this.findEarliestTrip(
                             trips,
                             i,
-                            prevArrival + 60,
+                            prevArrival + 60 + (k > 1 ? interchangePenalty : 0),
                         );
                         if (trip) {
-                            const st = trip.stopTimes[i]!;
-                            const stopDepTime = this.timeToSeconds(
-                                st.departure,
-                            );
-                            if (
-                                !currentTrip ||
-                                stopDepTime <
-                                    this.timeToSeconds(
-                                        currentTrip.stopTimes[i].departure,
-                                    )
-                            ) {
-                                currentTrip = { ...trip, boardingStop: sid };
+                            const st = trip.stopTimes[i];
+                            if (!st || !st.departure) continue; // Safety check
+                            const stopDepTime = st.departureSec || 0;
+                            
+                            // Null check for currentTrip.stopTimes[i] as requested
+                            const currentTripST = currentTrip ? currentTrip.stopTimes[i] : null;
+                            const currentTripDepTime = currentTripST ? (currentTripST.departureSec || 0) : Infinity;
+
+                            if (!currentTrip || stopDepTime < currentTripDepTime) {
+                                currentTrip = { ...trip, boardingStop: sid, boardingTime: stopDepTime };
                             }
                         }
                     }
                 }
             }
 
-            const walkingAdditions = new Map<string, RaptorLabel>();
-            markedStops.forEach((sid) => {
+            const markedArray = Array.from(markedStops);
+            for (let i = 0; i < markedArray.length; i++) {
+                const sid = markedArray[i];
                 const sIdx = stopToIndex.get(sid)!;
                 const arrivalAtSid = arrivalTimes[getFlatIdx(k, sIdx)];
 
-                // Use the optimized findNearbyStops from DataManager
-                const nearby = this.data.findNearbyStops(sid, 500);
-
-                nearby.forEach((ns: Stop & { distance: number }) => {
+                const nearby = this.data.findNearbyStops(sid, 2000); // Allow longer walks but with penalty
+                for (let j = 0; j < nearby.length; j++) {
+                    const ns = nearby[j] as Stop & { distance: number };
                     const walkTime = Math.floor(ns.distance / 1.4);
-                    const arrivalAtNs = arrivalAtSid + walkTime;
+                    let distancePenalty = 0;
+                    if (ns.distance > 500) {
+                        distancePenalty = Math.floor((ns.distance - 500) * 10); // Massive penalty for long walks
+                    }
+                    const arrivalAtNs = arrivalAtSid + walkTime + distancePenalty;
                     const nsIdx = stopToIndex.get(ns.stop_id)!;
                     const flatIdxK = getFlatIdx(k, nsIdx);
 
                     if (arrivalAtNs < arrivalTimes[flatIdxK]) {
                         arrivalTimes[flatIdxK] = arrivalAtNs;
                         precedingStops[flatIdxK] = sIdx;
-                        precedingTrips.set(flatIdxK, "WALKING");
                         precedingRoutes.set(flatIdxK, "WALKING");
+                        boardingTimes.set(flatIdxK, arrivalAtSid);
                         isWalking[flatIdxK] = 1;
-                        walkingAdditions.set(ns.stop_id, {
-                            arrivalTime: arrivalAtNs,
-                            precedingStopId: sid,
-                            precedingTripId: "WALKING",
-                            precedingRouteId: "WALKING",
-                            isWalking: true,
-                            round: k
-                        });
+                        markedStops.add(ns.stop_id);
                     }
-                });
-            });
-            walkingAdditions.forEach((_, sid) => markedStops.add(sid));
+                }
+            }
 
             if (markedStops.size === 0) break;
         }
 
-        return this.reconstructPathsPhase2(
+        return await this.reconstructPathsPhase2(
             arrivalTimes,
             precedingStops,
             precedingRoutes,
+            precedingTrips,
+            boardingTimes,
             isWalking,
             stopToIndex,
             stops,
@@ -204,17 +220,19 @@ export class RaptorEngine {
         );
     }
 
-    private reconstructPathsPhase2(
+    private async reconstructPathsPhase2(
         arrivalTimes: Float64Array,
         precedingStops: Int32Array,
         precedingRoutes: Map<number, string>,
+        precedingTrips: Map<number, string>,
+        boardingTimes: Map<number, number>,
         isWalking: Uint8Array,
         stopToIndex: Map<string, number>,
         stops: Stop[],
         startStopId: string,
         destinationStopId: string,
         maxRounds: number,
-    ): PathResult[] {
+    ): Promise<PathResult[]> {
         const results: PathResult[] = [];
         const numStops = stops.length;
         const destIdx = stopToIndex.get(destinationStopId);
@@ -240,6 +258,8 @@ export class RaptorEngine {
                 const toS = stops[currStopIdx];
                 const routeId = precedingRoutes.get(fIdx)!;
                 const walkFlag = isWalking[fIdx];
+                const tripId = precedingTrips.get(fIdx);
+                const departureTime = boardingTimes.get(fIdx) || 0;
 
                 const dist = haversine(
                     fromS.stop_lat,
@@ -256,8 +276,9 @@ export class RaptorEngine {
                     toStopLat: toS.stop_lat,
                     toStopLon: toS.stop_lon,
                     arrivalTime: arrivalTimes[fIdx],
-                    departureTime: 0,
+                    departureTime: departureTime,
                     distance: dist,
+                    tripId: tripId,
                 });
 
                 if (routeId !== "WALKING") {
@@ -269,8 +290,10 @@ export class RaptorEngine {
                     segments[segments.length - 1].stops = stps;
                     segments[segments.length - 1].stopCount = Math.max(0, stps.length - 1);
                     segments[segments.length - 1].routeId = routeId;
+                    segments[segments.length - 1].routeName = this.data.getRouteName(routeId);
                 } else {
                     segments[segments.length - 1].routeId = "WALKING";
+                    segments[segments.length - 1].routeName = "Walking";
                     segments[segments.length - 1].stopCount = 0;
                 }
 
@@ -311,17 +334,29 @@ export class RaptorEngine {
     ) {
         // trips are sorted by first stop departure
         // We can use binary search or simple early exit
-        for (const trip of trips) {
+        for (let i = 0; i < trips.length; i++) {
+            const trip = trips[i];
             const st = trip.stopTimes[stopIdx];
-            if (!st) continue;
-            const dep = this.timeToSeconds(st.departure);
-            if (dep >= minDeparture) {
+            if (st && (st.departureSec || 0) >= minDeparture) {
                 return trip;
             }
         }
         return null;
     }
 
+    private getRouteStopIndex(routeId: string, stopId: string): number {
+        const indices = this.routeStopIndices.get(routeId);
+        if (!indices) {
+            // This should ideally not happen if routeStopIndices is populated correctly
+            // but as a fallback, we can re-populate for this route
+            const route = this.data.getRoute(routeId)!;
+            const newIndices = new Map<string, number>();
+            route.stops.forEach((s: string, idx: number) => newIndices.set(s, idx));
+            this.routeStopIndices.set(routeId, newIndices);
+            return newIndices.get(stopId)!;
+        }
+        return indices.get(stopId)!;
+    }
 
     private timeToSeconds(time: string): number {
         const parts = time.split(":").map(Number);

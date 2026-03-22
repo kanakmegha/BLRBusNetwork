@@ -1,4 +1,4 @@
-import type { Route, Stop, Trip } from "./types";
+import type { Route, Stop, StopTime, Trip } from "./types";
 import { haversine } from "../utils/geo";
 
 const DB_NAME = "TransitDB";
@@ -10,6 +10,8 @@ export class DataManager {
     private stopsArray: Stop[] = [];
     private routeTrips: Map<string, string[]> = new Map();
     private stopRoutes: Map<string, string[]> = new Map();
+    private routeNames: Map<string, string> = new Map();
+    private tripToRoute: Map<string, string> = new Map();
     private grid: Map<string, string[]> = new Map();
     private readonly GRID_SIZE = 0.005; // ~550m cells for faster localized search
     private db: IDBDatabase | null = null;
@@ -34,6 +36,9 @@ export class DataManager {
         // 4. Index route metadata
         Object.keys(bmtcTrips).forEach((rid) => {
             this.routeTrips.set(rid, bmtcTrips[rid]);
+            bmtcTrips[rid].forEach((tid: string) => {
+                this.tripToRoute.set(tid, rid);
+            });
         });
 
         // 5. Handle Metro Trips (Synthesized - High Frequency)
@@ -64,6 +69,27 @@ export class DataManager {
 
     private indexRoute(r: Route) {
         this.routes.set(r.route_id, r);
+        
+        // Smarter route name lookup
+        let name = r.route_short_name;
+        if (!name && r.route_long_name) {
+            // BMTC sometimes puts the route number at the end of route_long_name
+            const parts = r.route_long_name.split(' ');
+            const lastPart = parts[parts.length - 1];
+            if (lastPart && /^[A-Z0-9-]+$/.test(lastPart)) {
+                name = lastPart;
+            }
+        }
+        
+        if (!name) name = r.route_id;
+
+        // Prepend mode if not present
+        if (r.line_code === 'BUS' && !name.toLowerCase().includes('bus')) {
+            name = `Bus ${name}`;
+        }
+        
+        this.routeNames.set(r.route_id, name);
+
         r.stops.forEach((stopId: string) => {
             if (!this.stopRoutes.has(stopId)) {
                 this.stopRoutes.set(stopId, []);
@@ -74,6 +100,9 @@ export class DataManager {
 
     private synthesizeMetroTrips(routes: Route[]) {
         routes.forEach((r) => {
+            // Already has route_long_name like "Purple Line (...)"
+            this.routeNames.set(r.route_id, r.route_long_name);
+
             // Mocking high frequency (every 5 mins)
             const tripIds = [];
             for (let h = 5; h < 23; h++) {
@@ -131,11 +160,32 @@ export class DataManager {
         return results.get(routeId) || [];
     }
 
+    getRouteName(routeId: string): string {
+        return this.routeNames.get(routeId) || routeId;
+    }
+
+    getRouteByTrip(tripId: string): string | undefined {
+        return this.tripToRoute.get(tripId);
+    }
+
+    async getTrip(tripId: string): Promise<Trip | undefined> {
+        const routeId = this.getRouteByTrip(tripId);
+        if (!routeId) return undefined;
+        
+        const trips = await this.getTripsForRoute(routeId);
+        return trips.find(t => t.tripId === tripId);
+    }
+
+    getAllRoutes(): Route[] {
+        return Array.from(this.routes.values());
+    }
+
     async getTripsForRoutes(routeIds: string[]): Promise<Map<string, Trip[]>> {
         const results = new Map<string, Trip[]>();
         const bmtcToFetch: { routeId: string; tripIds: string[] }[] = [];
 
-        routeIds.forEach((rid) => {
+        for (let i = 0; i < routeIds.length; i++) {
+            const rid = routeIds[i];
             if (this.tripsCache.has(rid)) {
                 results.set(rid, this.tripsCache.get(rid)!);
             } else {
@@ -147,13 +197,22 @@ export class DataManager {
                     rid.startsWith("YELLOW")
                 ) {
                     const trips = this.getMetroTrips(rid, tripIds);
+                    // Convert times to seconds immediately
+                    for (let j = 0; j < trips.length; j++) {
+                        const t = trips[j];
+                        for (let k = 0; k < t.stopTimes.length; k++) {
+                            const st = t.stopTimes[k];
+                            st.arrivalSec = this.timeToSeconds(st.arrival);
+                            st.departureSec = this.timeToSeconds(st.departure);
+                        }
+                    }
                     this.tripsCache.set(rid, trips);
                     results.set(rid, trips);
                 } else {
                     bmtcToFetch.push({ routeId: rid, tripIds });
                 }
             }
-        });
+        }
 
         if (bmtcToFetch.length > 0 && this.db) {
             const tx = this.db.transaction("stopTimes", "readonly");
@@ -163,21 +222,27 @@ export class DataManager {
                 return new Promise<void>((resolve) => {
                     const routeTrips: Trip[] = [];
                     let completed = 0;
-                    f.tripIds.forEach((tid) => {
+                    for (let x = 0; x < f.tripIds.length; x++) {
+                        const tid = f.tripIds[x];
                         const req = store.get(tid);
                         req.onsuccess = () => {
                             if (req.result) {
+                                // Convert times to seconds for BMTC trips
+                                const stopTimes: StopTime[] = req.result;
+                                for (let k = 0; k < stopTimes.length; k++) {
+                                    const st = stopTimes[k];
+                                    st.arrivalSec = this.timeToSeconds(st.arrival);
+                                    st.departureSec = this.timeToSeconds(st.departure);
+                                }
                                 routeTrips.push({
                                     tripId: tid,
                                     routeId: f.routeId,
-                                    stopTimes: req.result,
+                                    stopTimes: stopTimes,
                                 });
                             }
                             if (++completed === f.tripIds.length) {
                                 routeTrips.sort((a, b) =>
-                                    this.timeToSeconds(
-                                        a.stopTimes[0].departure,
-                                    ) - this.timeToSeconds(b.stopTimes[0].departure)
+                                    (a.stopTimes[0].departureSec || 0) - (b.stopTimes[0].departureSec || 0)
                                 );
                                 this.tripsCache.set(f.routeId, routeTrips);
                                 results.set(f.routeId, routeTrips);
@@ -187,7 +252,7 @@ export class DataManager {
                         req.onerror = () => {
                             if (++completed === f.tripIds.length) resolve();
                         };
-                    });
+                    }
                 });
             });
             await Promise.all(promises);
