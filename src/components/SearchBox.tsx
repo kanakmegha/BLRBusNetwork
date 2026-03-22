@@ -6,8 +6,8 @@ interface SearchBoxProps {
     stops: Stop[];
     onSearch: (from: string, to: string) => void;
     onPlaceSelect?: (lat: number, lng: number) => void;
-    onSortChange?: (option: "TIME" | "FARE" | "TRANSFERS") => void;
-    sortBy?: "TIME" | "FARE" | "TRANSFERS";
+    onCriteriaChange?: (option: "FASTEST" | "MIN_FARE" | "MIN_INTERCHANGES") => void;
+    selectedCriteria?: "FASTEST" | "MIN_FARE" | "MIN_INTERCHANGES";
     initialFrom?: string;
     initialTo?: string;
     destStopName?: string | null;
@@ -18,8 +18,8 @@ export function SearchBox(
         stops,
         onSearch,
         onPlaceSelect,
-        onSortChange,
-        sortBy = "TIME",
+        onCriteriaChange,
+        selectedCriteria = "FASTEST",
         initialFrom,
         initialTo,
         destStopName,
@@ -92,25 +92,25 @@ export function SearchBox(
                 </h1>
                 <div className="flex gap-2">
                     {[
-                        { id: "TIME", label: "Fastest", icon: "⚡" },
-                        { id: "FARE", label: "Min Fare", icon: "₹" },
+                        { id: "FASTEST", label: "Fastest", icon: "⚡" },
+                        { id: "MIN_FARE", label: "Min Fare", icon: "₹" },
                         {
-                            id: "TRANSFERS",
+                            id: "MIN_INTERCHANGES",
                             label: "Min Interchange",
                             icon: "🔄",
                         },
                     ].map((opt) => (
                         <button
                             key={opt.id}
-                            onClick={() => onSortChange?.(opt.id as any)}
+                            onClick={() => onCriteriaChange?.(opt.id as any)}
                             className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all ${
-                                sortBy === opt.id
+                                selectedCriteria === opt.id
                                     ? "bg-purple-600 text-white shadow-lg shadow-purple-500/30 border-purple-400"
                                     : "bg-[#121212] text-gray-400 border border-white/5 hover:border-purple-500/50"
                             }`}
                         >
                             <span>{opt.label}</span>
-                            {sortBy === opt.id && (
+                            {selectedCriteria === opt.id && (
                                 <span className="text-xs">✓</span>
                             )}
                         </button>

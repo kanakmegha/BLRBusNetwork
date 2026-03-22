@@ -15,23 +15,29 @@ export class RaptorEngine {
         startStopId: string,
         destinationStopId: string,
         startTimeStr: string, // HH:MM:SS or HH:MM
-        filter: TransitFilter = "Min Time",
+        filter: TransitFilter,
         maxRounds: number = 3,
     ): Promise<PathResult[]> {
+        // 1. Explicit Engine Reset / Cache Initializations (Deep Search)
         const startTime = this.timeToSeconds(startTimeStr);
         const stops = this.data.getAllStops();
         const numStops = stops.length;
         
-        let interchangePenalty = 300; // 5 mins
-        if (filter === "Min Fare") interchangePenalty = 600; // Transfers are expensive
+        let interchangePenalty = 300; // 5 mins default
+        
+        if (filter === "MIN_FARE") {
+            interchangePenalty = 1800; // Transfers are expensive (30 mins)
+        } else if (filter === "MIN_INTERCHANGES") {
+            interchangePenalty = 7200; // 120 mins penalty as ordered (+7200 score)
+        }
 
         // Map stop_id to numeric index for flat array
         const stopToIndex = new Map<string, number>();
         stops.forEach((s, i) => stopToIndex.set(s.stop_id, i));
 
-        // Use flat Float64Array for arrival times: [round][stop]
-        // size: (maxRounds + 1) * numStops
-        const arrivalTimes = new Float64Array((maxRounds + 1) * numStops).fill(Infinity);
+        // earliestArrival & earliestCost: [round][stop] - reset on every call
+        const earliestArrival = new Float64Array((maxRounds + 1) * numStops).fill(Infinity);
+        const earliestCost = new Float64Array((maxRounds + 1) * numStops).fill(Infinity);
         
         // Store preceding info only for reachable stops to save memory/initialization time
         const precedingStops = new Int32Array((maxRounds + 1) * numStops).fill(-1);
@@ -44,7 +50,8 @@ export class RaptorEngine {
 
         // Set start point
         const startIdx = stopToIndex.get(startStopId)!;
-        arrivalTimes[getFlatIdx(0, startIdx)] = startTime;
+        earliestArrival[getFlatIdx(0, startIdx)] = startTime;
+        earliestCost[getFlatIdx(0, startIdx)] = 0;
         const markedStops = new Set<string>([startStopId]);
         let bestTargetArrival = Infinity;
         const targetIdx = stopToIndex.get(destinationStopId)!;
@@ -69,8 +76,8 @@ export class RaptorEngine {
             const nsIdx = stopToIndex.get(ns.stop_id)!;
             const flatIdx = getFlatIdx(0, nsIdx);
 
-            if (startTime + walkTime < arrivalTimes[flatIdx]) {
-                arrivalTimes[flatIdx] = startTime + walkTime;
+            if (startTime + walkTime < earliestArrival[flatIdx]) {
+                earliestArrival[flatIdx] = startTime + walkTime;
                 precedingStops[flatIdx] = startIdx;
                 precedingRoutes.set(flatIdx, "WALKING");
                 boardingTimes.set(flatIdx, startTime);
@@ -126,16 +133,37 @@ export class RaptorEngine {
 
                     if (currentTrip) {
                         const st: StopTime | undefined = currentTrip.stopTimes[i];
-                        if (st && st.stopId === sid && st.departure) { // Safety check
+                        if (st && st.stopId === sid && st.departure) {
                             const arrival = st.arrivalSec || 0;
                             
-                            // Optimized: only check against best arrival in previous rounds
-                            let bestArrivalSoFar = arrivalTimes[getFlatIdx(k - 1, sIdx)];
-                            if (arrivalTimes[flatIdxK] < bestArrivalSoFar) bestArrivalSoFar = arrivalTimes[flatIdxK];
+                            // 1. Calculate Segment Cost
+                            const isMetro = routeId.startsWith("PURPLE") || routeId.startsWith("GREEN") || routeId.startsWith("YELLOW");
+                            const stopsFromBoarding = i - startIdxInRoute;
+                            const segmentFare = this.calculateFareProxy(stopsFromBoarding, isMetro);
+                            
+                            const boardingStopIdx = stopToIndex.get(currentTrip.boardingStop)!;
+                            const prevRoundCost = earliestCost[getFlatIdx(k - 1, boardingStopIdx)];
+                            const totalCost = (prevRoundCost === Infinity ? 0 : prevRoundCost) + segmentFare;
 
-                            if (arrival < bestTargetArrival && arrival < bestArrivalSoFar) {
-                                arrivalTimes[flatIdxK] = arrival;
-                                precedingStops[flatIdxK] = stopToIndex.get(currentTrip.boardingStop)!;
+                            // 2. Decision Logic (Pruning)
+                            let shouldUpdate = false;
+                            
+                            if (filter === "MIN_FARE") {
+                                if (totalCost < earliestCost[flatIdxK]) {
+                                    shouldUpdate = true;
+                                } else if (totalCost === earliestCost[flatIdxK] && arrival < earliestArrival[flatIdxK]) {
+                                    shouldUpdate = true; // Tie-breaker: faster time
+                                }
+                            } else {
+                                if (arrival < earliestArrival[flatIdxK] && arrival < bestTargetArrival) {
+                                    shouldUpdate = true;
+                                }
+                            }
+
+                            if (shouldUpdate) {
+                                earliestArrival[flatIdxK] = arrival;
+                                earliestCost[flatIdxK] = totalCost;
+                                precedingStops[flatIdxK] = boardingStopIdx;
                                 precedingRoutes.set(flatIdxK, routeId);
                                 precedingTrips.set(flatIdxK, currentTrip.tripId);
                                 boardingTimes.set(flatIdxK, currentTrip.boardingTime);
@@ -149,7 +177,7 @@ export class RaptorEngine {
                         }
                     }
 
-                    const prevArrival = arrivalTimes[getFlatIdx(k - 1, sIdx)];
+                    const prevArrival = earliestArrival[getFlatIdx(k - 1, sIdx)];
                     if (prevArrival !== Infinity && prevArrival < bestTargetArrival) {
                         const trip = this.findEarliestTrip(
                             trips,
@@ -177,7 +205,7 @@ export class RaptorEngine {
             for (let i = 0; i < markedArray.length; i++) {
                 const sid = markedArray[i];
                 const sIdx = stopToIndex.get(sid)!;
-                const arrivalAtSid = arrivalTimes[getFlatIdx(k, sIdx)];
+                const arrivalAtSid = earliestArrival[getFlatIdx(k, sIdx)];
 
                 const nearby = this.data.findNearbyStops(sid, 2000); // Allow longer walks but with penalty
                 for (let j = 0; j < nearby.length; j++) {
@@ -191,8 +219,8 @@ export class RaptorEngine {
                     const nsIdx = stopToIndex.get(ns.stop_id)!;
                     const flatIdxK = getFlatIdx(k, nsIdx);
 
-                    if (arrivalAtNs < arrivalTimes[flatIdxK]) {
-                        arrivalTimes[flatIdxK] = arrivalAtNs;
+                    if (arrivalAtNs < earliestArrival[flatIdxK]) {
+                        earliestArrival[flatIdxK] = arrivalAtNs;
                         precedingStops[flatIdxK] = sIdx;
                         precedingRoutes.set(flatIdxK, "WALKING");
                         boardingTimes.set(flatIdxK, arrivalAtSid);
@@ -206,7 +234,7 @@ export class RaptorEngine {
         }
 
         return await this.reconstructPathsPhase2(
-            arrivalTimes,
+            earliestArrival,
             precedingStops,
             precedingRoutes,
             precedingTrips,
@@ -217,11 +245,12 @@ export class RaptorEngine {
             startStopId,
             destinationStopId,
             maxRounds,
+            filter,
         );
     }
 
     private async reconstructPathsPhase2(
-        arrivalTimes: Float64Array,
+        earliestArrival: Float64Array,
         precedingStops: Int32Array,
         precedingRoutes: Map<number, string>,
         precedingTrips: Map<number, string>,
@@ -232,6 +261,7 @@ export class RaptorEngine {
         startStopId: string,
         destinationStopId: string,
         maxRounds: number,
+        filter: TransitFilter,
     ): Promise<PathResult[]> {
         const results: PathResult[] = [];
         const numStops = stops.length;
@@ -242,7 +272,7 @@ export class RaptorEngine {
 
         for (let k = 1; k <= maxRounds; k++) {
             const flatIdxDest = getFlatIdx(k, destIdx);
-            const arrival = arrivalTimes[flatIdxDest];
+            const arrival = earliestArrival[flatIdxDest];
             if (arrival === Infinity) continue;
 
             const segments: any[] = [];
@@ -275,7 +305,7 @@ export class RaptorEngine {
                     fromStopLon: fromS.stop_lon,
                     toStopLat: toS.stop_lat,
                     toStopLon: toS.stop_lon,
-                    arrivalTime: arrivalTimes[fIdx],
+                    arrivalTime: earliestArrival[fIdx],
                     departureTime: departureTime,
                     distance: dist,
                     tripId: tripId,
@@ -306,7 +336,7 @@ export class RaptorEngine {
                 const reversedSegments = segments.reverse();
                 const startFlatIdx = getFlatIdx(0, stopToIndex.get(startStopId)!);
                 results.push({
-                    totalTime: arrival - arrivalTimes[startFlatIdx],
+                    totalTime: arrival - earliestArrival[startFlatIdx],
                     totalFare: FareCalculator.calculateTotalFare(reversedSegments),
                     transfers: k - 1,
                     segments: reversedSegments,
@@ -314,17 +344,33 @@ export class RaptorEngine {
             }
         }
 
-        return this.filterPareto(results).sort((a, b) =>
-            a.totalTime - b.totalTime
-        ).slice(0, 5);
+        return this.filterPareto(results, filter).sort((a, b) => {
+            if (filter === "MIN_FARE") {
+                if (a.totalFare !== b.totalFare) return a.totalFare - b.totalFare;
+                return a.totalTime - b.totalTime;
+            }
+            if (filter === "MIN_INTERCHANGES") {
+                if (a.transfers !== b.transfers) return a.transfers - b.transfers;
+                return a.totalTime - b.totalTime;
+            }
+            return a.totalTime - b.totalTime;
+        }).slice(0, 5);
     }
 
-    private filterPareto(paths: PathResult[]): PathResult[] {
+    private filterPareto(paths: PathResult[], filter: TransitFilter): PathResult[] {
         return paths.filter((p1, i) =>
-            !paths.some((p2, j) =>
-                i !== j && p2.totalTime <= p1.totalTime &&
-                p2.transfers < p1.transfers
-            )
+            !paths.some((p2, j) => {
+                if (i === j) return false;
+                
+                if (filter === "MIN_FARE") {
+                    return p2.totalFare <= p1.totalFare && p2.totalTime < p1.totalTime;
+                }
+                if (filter === "MIN_INTERCHANGES") {
+                    return p2.transfers <= p1.transfers && p2.totalTime < p1.totalTime;
+                }
+                
+                return p2.totalTime <= p1.totalTime && p2.transfers < p1.transfers;
+            })
         );
     }
 
@@ -357,6 +403,24 @@ export class RaptorEngine {
             return newIndices.get(stopId)!;
         }
         return indices.get(stopId)!;
+    }
+
+    private calculateFareProxy(stopCount: number, isMetro: boolean): number {
+        if (isMetro) {
+            // Metro Approximate
+            if (stopCount <= 2) return 10;
+            if (stopCount <= 5) return 20;
+            if (stopCount <= 10) return 30;
+            return 60;
+        }
+        // BMTC Ordinary Approximate (5-stage model)
+        const stages = Math.ceil(stopCount / 2);
+        if (stages <= 1) return 5;
+        if (stages <= 2) return 10;
+        if (stages <= 3) return 15;
+        if (stages <= 4) return 20;
+        if (stages <= 5) return 25;
+        return 30;
     }
 
     private timeToSeconds(time: string): number {

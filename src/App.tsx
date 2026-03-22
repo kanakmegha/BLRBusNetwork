@@ -9,15 +9,14 @@ import type { PathResult, TransitFilter } from "./engine/types";
 import "./App.css";
 
 function App() {
-  const { isReady, error, stops, findRoute, findNearestStop, dataManager } = useTransit();
+  const { isReady, error, isCalculating, stops, findRoute, findNearestStop, dataManager } = useTransit();
   const [results, setResults] = useState<PathResult[]>([]);
   const [selectedPath, setSelectedPath] = useState<PathResult | null>(null);
   const [stopMap, setStopMap] = useState<Map<string, any>>(new Map());
-  const [activeFilter, setActiveFilter] = useState<TransitFilter>("Min Time");
   const [showMetroMap, setShowMetroMap] = useState(false);
   const [fromStopId, setFromStopId] = useState("");
   const [toStopId, setToStopId] = useState("");
-  const [sortBy, setSortBy] = useState<"TIME" | "FARE" | "TRANSFERS">("TIME");
+  const [selectedCriteria, setSelectedCriteria] = useState<TransitFilter>("FASTEST");
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number }>({
     lat: 12.9716,
     lng: 77.5946,
@@ -75,32 +74,41 @@ function App() {
     }
   }, [isReady, findNearestStop, fromStopId, stops]);
 
-  const handleSearch = async (from: string, to: string, filterOverride?: TransitFilter) => {
-    if (!from || !to) return;
+  const handleSearch = async (fromValue: string, toValue: string) => {
+    if (!fromValue || !toValue) return;
+    
+    // Safety Net: 5-character LFS check ('versi' check)
+    try {
+      const response = await fetch("/data/metro_stops.json");
+      const text = await response.text();
+      if (text.trim().startsWith("versi")) {
+        alert("Data Error: LFS Pointer detected. Perform a Clean Build.");
+        return;
+      }
+    } catch (e) {
+      console.error("LFS check failed", e);
+    }
+
+    // Ensure Deep Search: Clear previous results and states entirely
     setIsSearching(true);
-    setHasSearched(true);
+    setHasSearched(false);
     setResults([]);
-    const filter = filterOverride || activeFilter;
-    const pathResults = await findRoute(from, to, "08:00:00", filter);
+    setSelectedPath(null);
+
+    const pathResults = await findRoute(fromValue, toValue, "08:00:00", selectedCriteria);
+    
     setResults(pathResults);
+    setHasSearched(true);
+    
     if (pathResults.length > 0) {
       setSelectedPath(pathResults[0]);
-    } else {
-      setSelectedPath(null);
     }
     setIsSearching(false);
   };
 
-  const handleSortChange = (sort: "TIME" | "FARE" | "TRANSFERS") => {
-    setSortBy(sort);
-    let filter: TransitFilter = "Min Time";
-    if (sort === "FARE") filter = "Min Fare";
-    if (sort === "TRANSFERS") filter = "Min Interchange";
-    setActiveFilter(filter);
-    
-    if (fromStopId && toStopId) {
-      handleSearch(fromStopId, toStopId, filter);
-    }
+  const handleCriteriaChange = (criteria: TransitFilter) => {
+    // ONLY update the UI state (Draft State)
+    setSelectedCriteria(criteria);
   };
 
   const handleDestinationPlaceSelect = (lat: number, lng: number) => {
@@ -108,9 +116,7 @@ function App() {
     if (nearest) {
       setToStopId(nearest.stop_id);
       setDestStopName(nearest.stop_name);
-      if (fromStopId) {
-        handleSearch(fromStopId, nearest.stop_id);
-      }
+      // LOCKDOWN: no auto-search here
     }
   };
 
@@ -122,26 +128,37 @@ function App() {
       setToStopId(stopId);
       setDestStopName(stop?.stop_name || null);
     }
-
-    // Auto-search logic
-    const f = type === "FROM" ? stopId : fromStopId;
-    const t = type === "TO" ? stopId : toStopId;
-    if (f && t) handleSearch(f, t);
+    // LOCKDOWN: no auto-search here
   };
 
   return (
     <main className="relative w-full h-screen bg-[#121212] flex flex-col items-center justify-center overflow-hidden">
-      {!isReady
-        ? (
-          <div className="flex flex-col items-center gap-4">
-            <div className="w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full animate-spin">
-            </div>
-            <p className="text-white font-medium animate-pulse">
-              Syncing Bengaluru Transit Data...
-            </p>
+      {error ? (
+        <div className="flex flex-col items-center gap-6 p-8 bg-[#1a0a0a] border border-red-500/30 rounded-3xl max-w-sm text-center shadow-2xl animate-in fade-in zoom-in duration-500">
+          <div className="text-4xl">🚫</div>
+          <div className="space-y-1">
+            <h1 className="text-xl font-black text-white uppercase tracking-tighter">System Error</h1>
+            <p className="text-[10px] text-red-500/80 font-black uppercase tracking-widest">Data Not Loaded</p>
           </div>
-        )
-        : (
+          <p className="text-gray-400 font-medium text-xs leading-relaxed px-4">
+            {error}
+          </p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="w-full py-3 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl transition-all active:scale-95 text-[10px] uppercase tracking-widest shadow-lg shadow-red-900/20"
+          >
+            Retry Connection
+          </button>
+        </div>
+      ) : !isReady ? (
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full animate-spin">
+          </div>
+          <p className="text-white font-medium animate-pulse">
+            Syncing Bengaluru Transit Data...
+          </p>
+        </div>
+      ) : (
           <>
             {showMetroMap
               ? (
@@ -173,6 +190,15 @@ function App() {
                 : "🚇 Switch to Schematic View"}
             </button>
 
+            {isCalculating && (
+              <div className="absolute inset-0 z-[200] bg-[#0a0a0a]/40 backdrop-blur-[2px] flex items-center justify-center rounded-[32px] pointer-events-none">
+                <div className="bg-[#1e1e1e] border border-white/10 px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 animate-in fade-in zoom-in duration-300">
+                  <div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                  <span className="text-[10px] font-black text-white uppercase tracking-widest">Optimizing Route...</span>
+                </div>
+              </div>
+            )}
+
             <h1 className="sr-only">
               BLR Transit: Find Bangalore BMTC Bus Routes and Metro Directions
             </h1>
@@ -181,8 +207,8 @@ function App() {
                 stops={stops}
                 onSearch={handleSearch}
                 onPlaceSelect={handleDestinationPlaceSelect}
-                onSortChange={handleSortChange}
-                sortBy={sortBy}
+                onCriteriaChange={handleCriteriaChange}
+                selectedCriteria={selectedCriteria}
                 initialFrom={fromStopId}
                 initialTo={toStopId}
                 destStopName={destStopName}
@@ -191,7 +217,7 @@ function App() {
 
             <RouteResults
               results={results}
-              sortBy={sortBy}
+              selectedCriteria={selectedCriteria}
               onSelect={(path) => setSelectedPath(path)}
               dataManager={dataManager}
             />

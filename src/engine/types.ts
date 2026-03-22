@@ -47,7 +47,7 @@ export interface PathResult {
     segments: PathSegment[];
 }
 
-export type TransitFilter = "Min Fare" | "Min Interchange" | "Min Time";
+export type TransitFilter = "FASTEST" | "MIN_FARE" | "MIN_INTERCHANGES";
 
 export interface PathSegment {
     fromStopId: string;

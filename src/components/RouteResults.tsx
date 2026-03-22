@@ -5,20 +5,20 @@ import type { DataManager } from "../engine/data_manager";
 
 interface RouteResultsProps {
     results: PathResult[];
-    sortBy: "TIME" | "FARE" | "TRANSFERS";
+    selectedCriteria: "FASTEST" | "MIN_FARE" | "MIN_INTERCHANGES";
     onSelect: (path: PathResult) => void;
     dataManager: DataManager;
 }
 
-export function RouteResults({ results, sortBy, onSelect, dataManager }: RouteResultsProps) {
+export function RouteResults({ results, selectedCriteria, onSelect, dataManager }: RouteResultsProps) {
     const sortedResults = useMemo(() => {
         return [...results].sort((a, b) => {
-            if (sortBy === "TIME") return a.totalTime - b.totalTime;
-            if (sortBy === "FARE") return a.totalFare - b.totalFare;
-            if (sortBy === "TRANSFERS") return a.transfers - b.transfers;
+            if (selectedCriteria === "FASTEST") return a.totalTime - b.totalTime;
+            if (selectedCriteria === "MIN_FARE") return a.totalFare - b.totalFare;
+            if (selectedCriteria === "MIN_INTERCHANGES") return a.transfers - b.transfers;
             return 0;
         });
-    }, [results, sortBy]);
+    }, [results, selectedCriteria]);
 
     if (results.length === 0) return null;
 

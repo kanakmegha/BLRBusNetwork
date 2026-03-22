@@ -7,6 +7,8 @@ export function useTransit() {
     const [dataManager] = useState(() => new DataManager());
     const [isReady, setIsReady] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [isCalculating, setIsCalculating] = useState(false);
+    const [activeFilter] = useState<TransitFilter>("FASTEST");
     const engine = useMemo(() => new RaptorEngine(dataManager), [dataManager]);
     const [stops, setStops] = useState<Stop[]>([]);
 
@@ -29,17 +31,22 @@ export function useTransit() {
             startId: string,
             destId: string,
             startTime: string,
-            filter: TransitFilter = "Min Time",
+            filter: TransitFilter = activeFilter,
         ) => {
-            // engine is always defined due to useMemo and dataManager dependency
-            return await engine.findRoute(
-                startId,
-                destId,
-                startTime,
-                filter,
-            );
+            setIsCalculating(true);
+            try {
+                const results = await engine.findRoute(
+                    startId,
+                    destId,
+                    startTime,
+                    filter,
+                );
+                return results;
+            } finally {
+                setIsCalculating(false);
+            }
         },
-        [engine],
+        [engine, activeFilter],
     );
 
     const findNearestStop = useCallback(
@@ -49,5 +56,5 @@ export function useTransit() {
         [dataManager],
     );
 
-    return { isReady, error, stops, findRoute, findNearestStop, dataManager };
+    return { isReady, error, isCalculating, activeFilter, stops, findRoute, findNearestStop, dataManager };
 }

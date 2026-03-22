@@ -23,9 +23,9 @@ export class DataManager {
             const response = await fetch(url);
             const text = (await response.text()).trim();
             
-            // Comprehensive LFS check
-            if (text.startsWith("version ") && text.includes("git-lfs")) {
-                throw new Error(`Data bandwidth exceeded (LFS pointer detected for ${url.split('/').pop()}). Please check Vercel LFS billing.`);
+            // 5-character LFS check ('versi' check)
+            if (text.startsWith("versi")) {
+                throw new Error(`Data Error: LFS Pointer detected for ${url.split('/').pop()}. Perform a Clean Build (VERCEL_GIT_LFS_ENABLED=1).`);
             }
 
             try {

@@ -133,7 +133,9 @@ export function JourneyDetails({ selectedPath, stopMap, dataManager, onClose }: 
                   </div>
                 )}
                 <div className="text-[10px] text-gray-400 font-bold italic opacity-80">
-                  to {stopMap.get(seg.toStopId)?.stop_name || "Destination"}
+                  {stopMap.get(seg.fromStopId)?.stop_name === stopMap.get(seg.toStopId)?.stop_name
+                    ? `Transit within ${stopMap.get(seg.toStopId)?.stop_name}`
+                    : `to ${stopMap.get(seg.toStopId)?.stop_name || "Destination"}`}
                 </div>
               </div>
 
