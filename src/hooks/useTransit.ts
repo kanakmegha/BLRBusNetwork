@@ -43,5 +43,5 @@ export function useTransit() {
         [dataManager],
     );
 
-    return { isReady, stops, findRoute, findNearestStop };
+    return { isReady, stops, findRoute, findNearestStop, dataManager };
 }

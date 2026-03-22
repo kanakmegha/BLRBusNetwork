@@ -3,7 +3,7 @@ import path from "path";
 import { parse } from "csv-parse/sync";
 
 const bmtcDir = "src/data/bmtc";
-const outputDir = "src/data/processed";
+const outputDir = "public/data";
 
 if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
@@ -49,6 +49,7 @@ function processGTFS() {
         indexedRoutes[route.route_id] = {
             route_id: route.route_id,
             route_long_name: route.route_long_name,
+            bus_number: route.route_short_name,
             line_code: "BUS",
             stops: [],
         };

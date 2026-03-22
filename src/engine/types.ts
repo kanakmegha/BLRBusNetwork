@@ -11,6 +11,7 @@ export interface Route {
     route_id: string;
     route_short_name: string;
     route_long_name: string;
+    bus_number?: string;
     line_code: string;
     stops: string[]; // Sequential list of stop IDs
 }
@@ -57,6 +58,7 @@ export interface PathSegment {
     toStopLon: number;
     routeId: string | "WALKING";
     routeName?: string; // e.g. "Bus 378" or "Purple Line"
+    routeLongName?: string; // e.g. "Kengeri to Electronic City"
     tripId?: string;
     departureTime: number;
     arrivalTime: number;

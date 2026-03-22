@@ -3,13 +3,13 @@ import { Map as GoogleMap } from "./components/Map";
 import { MetroMap } from "./components/MetroMap";
 import { SearchBox } from "./components/SearchBox";
 import { RouteResults } from "./components/RouteResults";
+import { JourneyDetails } from "./components/JourneyDetails";
 import { useTransit } from "./hooks/useTransit";
 import type { PathResult, TransitFilter } from "./engine/types";
-import { formatSecondsAsTime } from "./utils/geo";
 import "./App.css";
 
 function App() {
-  const { isReady, stops, findRoute, findNearestStop } = useTransit();
+  const { isReady, stops, findRoute, findNearestStop, dataManager } = useTransit();
   const [results, setResults] = useState<PathResult[]>([]);
   const [selectedPath, setSelectedPath] = useState<PathResult | null>(null);
   const [stopMap, setStopMap] = useState<Map<string, any>>(new Map());
@@ -163,6 +163,7 @@ function App() {
               results={results}
               sortBy={sortBy}
               onSelect={(path) => setSelectedPath(path)}
+              dataManager={dataManager}
             />
 
             {(isSearching || (hasSearched && results.length === 0)) && (
@@ -191,98 +192,12 @@ function App() {
             )}
 
             {selectedPath && (
-              <div className="absolute top-6 right-6 z-[100] w-96 bg-[#1e1e1e]/95 backdrop-blur-xl p-8 rounded-[32px] border border-white/5 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.5)] overflow-hidden">
-                <div className="flex justify-between items-start mb-8">
-                  <div>
-                    <h2 className="text-gray-400 text-[10px] uppercase tracking-[0.2em] font-black mb-1">
-                      Total Journey Time
-                    </h2>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-5xl font-black text-white tracking-tighter">
-                        {Math.round(selectedPath.totalTime / 60)}
-                      </span>
-                      <span className="text-xl font-bold text-purple-500 uppercase">
-                        min
-                      </span>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setSelectedPath(null)}
-                    className="p-2 hover:bg-white/5 rounded-full transition-colors text-gray-500 hover:text-white"
-                  >
-                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-
-                <div className="space-y-0 relative">
-                  {/* Timeline track */}
-                  <div className="absolute left-[11px] top-4 bottom-4 w-[2px] bg-gradient-to-b from-purple-500 via-blue-500 to-emerald-500 opacity-20" />
-
-                  {selectedPath.segments.map((seg, idx) => (
-                    <div
-                      key={idx}
-                      className="relative pl-10 pb-10 last:pb-0 group"
-                    >
-                      {/* Node point */}
-                      <div className={`absolute left-0 top-1 w-6 h-6 rounded-full border-4 border-[#1e1e1e] z-10 shadow-lg transition-transform group-hover:scale-125
-                        ${seg.routeId === "WALKING" ? "bg-gray-600" : "bg-purple-600"}`}
-                      />
-
-                      <div className="flex flex-col gap-2">
-                        {/* Time and Title Row */}
-                        <div className="flex justify-between items-center">
-                          <span className={`text-[10px] font-black px-2 py-0.5 rounded shadow-sm uppercase tracking-wider
-                            ${seg.routeId === "WALKING" ? "bg-gray-800 text-gray-400" : "bg-purple-900/50 text-purple-300"}`}>
-                            {seg.routeName || seg.routeId}
-                          </span>
-                          <span className="text-xs font-mono text-gray-500 font-bold bg-white/5 px-2 py-0.5 rounded">
-                            {formatSecondsAsTime(seg.departureTime).slice(0, 5)}
-                          </span>
-                        </div>
-
-                        {/* Stop Names */}
-                        <div className="space-y-0.5">
-                          <div className="text-sm text-white font-bold leading-tight">
-                            {stopMap.get(seg.fromStopId)?.stop_name}
-                          </div>
-                          <div className="text-[10px] text-gray-500 font-medium italic">
-                            to {stopMap.get(seg.toStopId)?.stop_name}
-                          </div>
-                        </div>
-
-                        {/* Metadata Row */}
-                        <div className="flex items-center gap-3 mt-1">
-                          <div className="flex items-center gap-1.5 bg-white/5 px-2.5 py-1 rounded-full border border-white/5">
-                            <span className="text-[10px] text-white font-bold">
-                              {Math.round((seg.arrivalTime - seg.departureTime) / 60)} min
-                            </span>
-                          </div>
-                          
-                          {seg.routeId !== "WALKING" ? (
-                            <div className="flex items-center gap-1.5 bg-white/5 px-2.5 py-1 rounded-full border border-white/5">
-                              <span className="text-[10px] text-gray-400 font-bold">
-                                {seg.stopCount} stops
-                              </span>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-1.5 bg-white/5 px-2.5 py-1 rounded-full border border-white/5">
-                              <span className="text-[10px] text-gray-400 font-bold">
-                                {Math.round(seg.distance || 0)}m
-                              </span>
-                            </div>
-                          )}
-
-                          <span className="ml-auto text-xs font-mono text-gray-500 font-bold">
-                            Arr {formatSecondsAsTime(seg.arrivalTime).slice(0, 5)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <JourneyDetails
+                selectedPath={selectedPath}
+                stopMap={stopMap}
+                dataManager={dataManager}
+                onClose={() => setSelectedPath(null)}
+              />
             )}
           </>
         )}

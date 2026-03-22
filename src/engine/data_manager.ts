@@ -11,6 +11,7 @@ export class DataManager {
     private routeTrips: Map<string, string[]> = new Map();
     private stopRoutes: Map<string, string[]> = new Map();
     private routeNames: Map<string, string> = new Map();
+    private cleanShortNames: Map<string, string> = new Map();
     private tripToRoute: Map<string, string> = new Map();
     private grid: Map<string, string[]> = new Map();
     private readonly GRID_SIZE = 0.005; // ~550m cells for faster localized search
@@ -71,7 +72,8 @@ export class DataManager {
         this.routes.set(r.route_id, r);
         
         // Smarter route name lookup
-        let name = r.route_short_name;
+        let name = r.bus_number || r.route_short_name;
+        
         if (!name && r.route_long_name) {
             // BMTC sometimes puts the route number at the end of route_long_name
             const parts = r.route_long_name.split(' ');
@@ -83,12 +85,16 @@ export class DataManager {
         
         if (!name) name = r.route_id;
 
-        // Prepend mode if not present
-        if (r.line_code === 'BUS' && !name.toLowerCase().includes('bus')) {
-            name = `Bus ${name}`;
+        // Store clean short name without 'Bus ' prefix
+        this.cleanShortNames.set(r.route_id, name);
+
+        // Prepend mode if not present for the internal routeNames map
+        let fullName = name;
+        if (r.line_code === 'BUS' && !fullName.toLowerCase().includes('bus')) {
+            fullName = `Bus ${fullName}`;
         }
         
-        this.routeNames.set(r.route_id, name);
+        this.routeNames.set(r.route_id, fullName);
 
         r.stops.forEach((stopId: string) => {
             if (!this.stopRoutes.has(stopId)) {
@@ -162,6 +168,14 @@ export class DataManager {
 
     getRouteName(routeId: string): string {
         return this.routeNames.get(routeId) || routeId;
+    }
+
+    getRouteShortName(routeId: string): string {
+        return this.cleanShortNames.get(routeId) || routeId;
+    }
+
+    getDisplayNumber(routeId: string): string {
+        return this.getRouteShortName(routeId);
     }
 
     getRouteByTrip(tripId: string): string | undefined {
@@ -434,5 +448,41 @@ export class DataManager {
                 };
             })
             .filter((s): s is Stop & { busNumbers: string[] } => s !== null);
+    }
+
+    getBusNumbersForSegment(
+        fromStopId: string,
+        toStopId: string,
+        stopSequence: string[],
+    ): string[] {
+        const busNumbers = new Set<string>();
+        const routesAtStart = this.getRoutesForStop(fromStopId);
+
+        for (const rid of routesAtStart) {
+            const route = this.routes.get(rid);
+            if (!route || route.line_code !== "BUS") continue;
+
+            const fromIdx = route.stops.indexOf(fromStopId);
+            const toIdx = route.stops.indexOf(toStopId);
+
+            if (fromIdx !== -1 && toIdx !== -1 && fromIdx < toIdx) {
+                const routeSlice = route.stops.slice(fromIdx, toIdx + 1);
+                // Check if the sequence of stop IDs matches exactly
+                if (routeSlice.length === stopSequence.length) {
+                    let match = true;
+                    for (let i = 0; i < routeSlice.length; i++) {
+                        if (routeSlice[i] !== stopSequence[i]) {
+                            match = false;
+                            break;
+                        }
+                    }
+                    if (match) {
+                        const name = this.getRouteShortName(rid);
+                        busNumbers.add(name);
+                    }
+                }
+            }
+        }
+        return Array.from(busNumbers);
     }
 }

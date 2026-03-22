@@ -1,14 +1,16 @@
 import { useMemo } from "react";
 import type { PathResult } from "../engine/types";
 import { formatSecondsAsTime } from "../utils/geo";
+import type { DataManager } from "../engine/data_manager";
 
 interface RouteResultsProps {
     results: PathResult[];
     sortBy: "TIME" | "FARE" | "TRANSFERS";
     onSelect: (path: PathResult) => void;
+    dataManager: DataManager;
 }
 
-export function RouteResults({ results, sortBy, onSelect }: RouteResultsProps) {
+export function RouteResults({ results, sortBy, onSelect, dataManager }: RouteResultsProps) {
     const sortedResults = useMemo(() => {
         return [...results].sort((a, b) => {
             if (sortBy === "TIME") return a.totalTime - b.totalTime;
@@ -72,7 +74,15 @@ export function RouteResults({ results, sortBy, onSelect }: RouteResultsProps) {
                                     >
                                         {seg.routeId === "WALKING"
                                             ? "W"
-                                            : (seg.routeName || seg.routeId).replace('Bus ', '')}
+                                            : (() => {
+                                                const nums = dataManager.getBusNumbersForSegment(
+                                                    seg.fromStopId,
+                                                    seg.toStopId,
+                                                    seg.stops?.map(s => s.stop_id) || []
+                                                );
+                                                const raw = nums.length > 0 ? nums[0] : dataManager.getDisplayNumber(seg.routeId).replace('Bus ', '');
+                                                return raw.split(' ')[0];
+                                            })()}
                                     </div>
                                     {sidx < result.segments.length - 1 && (
                                         <span className="text-gray-600">→</span>
@@ -108,7 +118,20 @@ export function RouteResults({ results, sortBy, onSelect }: RouteResultsProps) {
                                     />
                                     <div className="flex justify-between items-start">
                                         <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                                            {seg.routeName || seg.routeId}
+                                            {seg.routeId === "WALKING" 
+                                                ? "Walking" 
+                                                : (() => {
+                                                    const nums = dataManager.getBusNumbersForSegment(
+                                                        seg.fromStopId,
+                                                        seg.toStopId,
+                                                        seg.stops?.map(s => s.stop_id) || []
+                                                    );
+                                                    if (nums.length === 0) return seg.routeName || "Bus";
+                                                    const display = nums.slice(0, 2).map(n => n.replace('Bus ', '').split(' ')[0]).join(", ");
+                                                    const more = nums.length > 2 ? ` +${nums.length - 2} more` : "";
+                                                    return `Bus ${display}${more}`;
+                                                })()
+                                            }
                                             {seg.stopCount
                                                 ? ` • ${seg.stopCount} stops`
                                                 : ""}

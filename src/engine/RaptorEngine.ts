@@ -119,7 +119,7 @@ export class RaptorEngine {
 
                 const startIdxInRoute = this.getRouteStopIndex(routeId, boardingStopId);
 
-                for (let i = startIdxInRoute; i < route.stops.length; i++) {
+                for (let i = startIdxInRoute + 1; i < route.stops.length; i++) {
                     const sid = route.stops[i];
                     const sIdx = stopToIndex.get(sid)!;
                     const flatIdxK = getFlatIdx(k, sIdx);
@@ -252,7 +252,7 @@ export class RaptorEngine {
             while (currStopIdx !== stopToIndex.get(startStopId) && currRound >= 0) {
                 const fIdx = getFlatIdx(currRound, currStopIdx);
                 const pIdx = precedingStops[fIdx];
-                if (pIdx === -1) break;
+                if (pIdx === -1 || pIdx === currStopIdx) break;
 
                 const fromS = stops[pIdx];
                 const toS = stops[currStopIdx];
@@ -291,6 +291,7 @@ export class RaptorEngine {
                     segments[segments.length - 1].stopCount = Math.max(0, stps.length - 1);
                     segments[segments.length - 1].routeId = routeId;
                     segments[segments.length - 1].routeName = this.data.getRouteName(routeId);
+                    segments[segments.length - 1].routeLongName = this.data.getRoute(routeId)?.route_long_name;
                 } else {
                     segments[segments.length - 1].routeId = "WALKING";
                     segments[segments.length - 1].routeName = "Walking";
