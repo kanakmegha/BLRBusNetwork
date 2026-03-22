@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://blr-bus-network.vercel.app/sitemap.xml
+Sitemap: https://blr-transport.vercel.app/sitemap.xml
