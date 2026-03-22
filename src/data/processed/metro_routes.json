@@ -1,0 +1,20 @@
+[
+  {
+    "route_id": "PURPLE_UP",
+    "route_long_name": "Purple Line (Challaghatta - Whitefield)",
+    "line_code": "PURPLE",
+    "stops": ["CHAL", "KENG", "KGBT", "PATA", "JNAN", "RRNG", "NAYA", "MYRD", "DPNJ", "ATTG", "VIJN", "HOSH", "MGRD", "CRLY", "MAST", "SMVT", "VDSU", "CUBP", "MGRC", "TRIN", "HALA", "INDR", "SVRD", "BAYP", "BENN", "KRPR", "SING", "GARD", "HOOD", "SEET", "KUND", "NALL", "SSSH", "HFCS", "KTPK", "WFKD"]
+  },
+  {
+    "route_id": "GREEN_UP",
+    "route_long_name": "Green Line (Madavara - Silk Institute)",
+    "line_code": "GREEN",
+    "stops": ["MADA", "CHIK", "MANJ", "NAGA", "DASA", "JALA", "PNYI", "PENY", "YPNI", "YSPK", "SNDL", "MALK", "RJNR", "KVPU", "SRMP", "SMPG", "MAST", "CHCK", "KRMT", "NTLC", "LALB", "SECN", "JYNR", "RVRD", "BANA", "JPNR", "ELCH", "KNKC", "DODD", "VAJR", "THAL", "SILK"]
+  },
+  {
+    "route_id": "YELLOW_UP",
+    "route_long_name": "Yellow Line (RV Road - Bommasandra)",
+    "line_code": "YELLOW",
+    "stops": ["RVRD", "RAGI", "JAYD", "BTML", "CSLB", "BOMM", "HONG", "KUDL", "SING_Y", "HOSR", "BERA", "ECP1", "ECP2", "HUSK", "HEBB", "BOMS"]
+  }
+]
