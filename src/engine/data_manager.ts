@@ -18,7 +18,8 @@ export class DataManager {
     private db: IDBDatabase | null = null;
 
     async init() {
-        // 1. Health Check & Load data from public dir
+        try {
+            // 1. Health Check & Load data from public dir
         const fetchWithCheck = async (url: string) => {
             const response = await fetch(url);
             const text = (await response.text()).trim();
@@ -80,6 +81,10 @@ export class DataManager {
 
         // 7. Sync BMTC stop times to IndexedDB and hold connection
         this.db = await this.ensureStopTimesCached();
+        } catch (e) {
+            console.error("DataManager Initialization Failed:", e);
+            throw e;
+        }
     }
 
     private getGridKey(lat: number, lon: number): string {

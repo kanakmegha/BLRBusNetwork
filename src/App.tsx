@@ -142,6 +142,14 @@ function App() {
 
   return (
     <main className="relative w-full h-screen bg-[#121212] flex flex-col items-center justify-center overflow-hidden">
+        {/* SEO Persistence Layer */}
+        <h1 className="sr-only">
+          Namma Route: Bengaluru's Smartest BMTC Bus & Metro Navigator | Find Bangalore Bus Routes
+        </h1>
+        <p className="sr-only">
+          Ultimate transit app for Bengaluru. Find the fastest and cheapest BMTC routes across the city from Wipro Gate to Cubbon Park and beyond.
+        </p>
+
       {error ? (
         <div className="flex flex-col items-center gap-6 p-8 bg-[#1a0a0a] border border-red-500/30 rounded-3xl max-w-sm text-center shadow-2xl animate-in fade-in zoom-in duration-500">
           <div className="text-4xl">🚫</div>
@@ -166,6 +174,7 @@ function App() {
           <p className="text-white font-medium animate-pulse">
             Syncing Bengaluru Transit Data...
           </p>
+          <span className="text-[10px] text-gray-400 mt-2 font-medium tracking-tight">Namma Route Optimizer — Local Bengaluru Navigator</span>
         </div>
       ) : (
           <>
@@ -222,10 +231,7 @@ function App() {
               </div>
             )}
 
-            <h1 className="sr-only">
-              BLR Transit: Find Bangalore BMTC Bus Routes and Metro Directions
-            </h1>
-            <div className="absolute top-8 left-8 z-[120] flex flex-col items-start gap-4">
+             <div className="absolute top-8 left-8 z-[120] flex flex-col items-start gap-4">
               <SearchBox
                 stops={stops}
                 onSearch={handleSearch}
