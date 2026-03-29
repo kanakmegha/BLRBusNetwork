@@ -325,14 +325,23 @@ export class RaptorEngine {
                         fromS.stop_id,
                         toS.stop_id,
                     );
+                    const busNumbers = this.data.getBusNumbersForSegment(
+                        fromS.stop_id,
+                        toS.stop_id,
+                        stps.map(s => s.stop_id)
+                    );
+                    
                     segments[segments.length - 1].stops = stps;
                     segments[segments.length - 1].stopCount = Math.max(0, stps.length - 1);
                     segments[segments.length - 1].routeId = routeId;
                     segments[segments.length - 1].routeName = this.data.getRouteName(routeId);
                     segments[segments.length - 1].routeLongName = this.data.getRoute(routeId)?.route_long_name;
+                    segments[segments.length - 1].busNumbers = busNumbers;
+                    segments[segments.length - 1].displayName = busNumbers.length > 0 ? busNumbers[0] : (this.data.getRouteShortName(routeId) || routeId);
                 } else {
                     segments[segments.length - 1].routeId = "WALKING";
                     segments[segments.length - 1].routeName = "Walking";
+                    segments[segments.length - 1].displayName = "Walking";
                     segments[segments.length - 1].stopCount = 0;
                 }
 

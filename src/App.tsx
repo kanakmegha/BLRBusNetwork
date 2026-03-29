@@ -2,15 +2,17 @@ import { useEffect, useState } from "react";
 import { Map as GoogleMap } from "./components/Map";
 import { MetroMap } from "./components/MetroMap";
 import { SearchBox } from "./components/SearchBox";
-import { RouteResults } from "./components/RouteResults";
-import { JourneyDetails } from "./components/JourneyDetails";
-import { BusScheduleTable } from "./components/BusScheduleTable";
 import { useTransit } from "./hooks/useTransit";
+import { Suspense, lazy } from "react";
+
+const LazyBusScheduleTable = lazy(() => import("./components/BusScheduleTable").then(m => ({ default: m.BusScheduleTable })));
+const LazyJourneyDetails = lazy(() => import("./components/JourneyDetails").then(m => ({ default: m.JourneyDetails })));
+const LazyRouteResults = lazy(() => import("./components/RouteResults").then(m => ({ default: m.RouteResults })));
 import type { PathResult, TransitFilter } from "./engine/types";
 import "./App.css";
 
 function App() {
-  const { isReady, error, isCalculating, stops, findRoute, findNearestStop, dataManager } = useTransit();
+  const { isReady, error, isCalculating, stops, findRoute, findNearestStop, getRoutePath } = useTransit();
   const [results, setResults] = useState<PathResult[]>([]);
   const [selectedPath, setSelectedPath] = useState<PathResult | null>(null);
   const [stopMap, setStopMap] = useState<Map<string, any>>(new Map());
@@ -106,7 +108,7 @@ function App() {
     setResults([]);
     setSelectedPath(null);
 
-    const pathResults = await findRoute(fromValue, toValue, "08:00:00", selectedCriteria);
+    const pathResults = await findRoute(fromValue, toValue, "08:00:00", selectedCriteria) as PathResult[];
     
     setResults(pathResults);
     setHasSearched(true);
@@ -142,10 +144,12 @@ function App() {
     // LOCKDOWN: no auto-search here
   };
 
-  const handleBusClick = (busNumber: string) => {
+  const handleBusClick = async (busNumber: string) => {
     setExplorerRoute(busNumber);
-    const path = dataManager.getRoutePath(busNumber);
-    setExplorerPath(path);
+    if (getRoutePath) {
+      const path = await getRoutePath(busNumber);
+      setExplorerPath(path);
+    }
   };
 
   return (
@@ -252,13 +256,14 @@ function App() {
               />
             </div>
 
-            <RouteResults
-              results={results}
-              selectedCriteria={selectedCriteria}
-              onSelect={(path) => setSelectedPath(path)}
-              onBusClick={handleBusClick}
-              dataManager={dataManager}
-            />
+            <Suspense fallback={null}>
+              <LazyRouteResults
+                results={results}
+                selectedCriteria={selectedCriteria}
+                onSelect={(path: PathResult) => setSelectedPath(path)}
+                onBusClick={handleBusClick}
+              />
+            </Suspense>
 
             {explorerRoute && (
               <div className="absolute top-24 left-1/2 -translate-x-1/2 z-[110] flex flex-col items-center gap-6 w-full px-6 max-h-[70vh] overflow-y-auto">
@@ -305,7 +310,9 @@ function App() {
                   </div>
                 </div>
 
-                {explorerRoute === "378" && <BusScheduleTable />}
+                <Suspense fallback={<div className="text-white text-[10px] uppercase tracking-widest animate-pulse">Loading Schedule...</div>}>
+                  {explorerRoute === "378" && <LazyBusScheduleTable />}
+                </Suspense>
               </div>
             )}
 
@@ -334,15 +341,16 @@ function App() {
               </div>
             )}
 
-            {selectedPath && (
-              <JourneyDetails
-                selectedPath={selectedPath}
-                stopMap={stopMap}
-                dataManager={dataManager}
-                onBusClick={handleBusClick}
-                onClose={() => setSelectedPath(null)}
-              />
-            )}
+            <Suspense fallback={null}>
+              {selectedPath && (
+                <LazyJourneyDetails
+                  selectedPath={selectedPath}
+                  stopMap={stopMap}
+                  onBusClick={handleBusClick}
+                  onClose={() => setSelectedPath(null)}
+                />
+              )}
+            </Suspense>
 
             {/* Visible SEO Footer */}
             <div className="absolute bottom-4 right-8 z-[100] text-right pointer-events-none opacity-40 hover:opacity-100 transition-opacity">

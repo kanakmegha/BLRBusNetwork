@@ -308,7 +308,7 @@ export function Map(
     return (
         <div
             ref={mapRef}
-            className="w-full h-full min-h-[400px] rounded-2xl overflow-hidden shadow-2xl"
+            className="w-full h-full min-h-[500px] rounded-2xl overflow-hidden shadow-2xl"
         />
     );
 }

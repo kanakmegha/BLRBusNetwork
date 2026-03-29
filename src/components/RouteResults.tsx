@@ -1,17 +1,15 @@
 import { useMemo } from "react";
 import type { PathResult } from "../engine/types";
 import { formatSecondsAsTime } from "../utils/geo";
-import type { DataManager } from "../engine/data_manager";
 
 interface RouteResultsProps {
     results: PathResult[];
     selectedCriteria: "FASTEST" | "MIN_FARE" | "MIN_INTERCHANGES";
     onSelect: (path: PathResult) => void;
     onBusClick: (busNumber: string) => void;
-    dataManager: DataManager;
 }
 
-export function RouteResults({ results, selectedCriteria, onSelect, onBusClick, dataManager }: RouteResultsProps) {
+export function RouteResults({ results, selectedCriteria, onSelect, onBusClick }: RouteResultsProps) {
     const sortedResults = useMemo(() => {
         return [...results].sort((a, b) => {
             if (selectedCriteria === "FASTEST") return a.totalTime - b.totalTime;
@@ -76,13 +74,8 @@ export function RouteResults({ results, selectedCriteria, onSelect, onBusClick, 
                                         {seg.routeId === "WALKING"
                                             ? "W"
                                             : (() => {
-                                                const nums = dataManager.getBusNumbersForSegment(
-                                                    seg.fromStopId,
-                                                    seg.toStopId,
-                                                    seg.stops?.map(s => s.stop_id) || []
-                                                );
-                                                const raw = nums.length > 0 ? nums[0] : dataManager.getDisplayNumber(seg.routeId).replace('Bus ', '');
-                                                const busNum = raw.split(' ')[0];
+                                                const raw = (seg as any).displayName || (seg as any).routeName || "Bus";
+                                                const busNum = raw.replace('Bus ', '').split(' ')[0];
                                                 return (
                                                     <span 
                                                         onClick={(e) => {
@@ -133,13 +126,9 @@ export function RouteResults({ results, selectedCriteria, onSelect, onBusClick, 
                                             {seg.routeId === "WALKING" 
                                                 ? "Walking" 
                                                 : (() => {
-                                                    const nums = dataManager.getBusNumbersForSegment(
-                                                        seg.fromStopId,
-                                                        seg.toStopId,
-                                                        seg.stops?.map(s => s.stop_id) || []
-                                                    );
+                                                    const nums = (seg as any).busNumbers || [];
                                                     if (nums.length === 0) return seg.routeName || "Bus";
-                                                    const display = nums.slice(0, 2).map(n => n.replace('Bus ', '').split(' ')[0]).join(", ");
+                                                    const display = nums.slice(0, 2).map((n: string) => n.replace('Bus ', '').split(' ')[0]).join(", ");
                                                     const more = nums.length > 2 ? ` +${nums.length - 2} more` : "";
                                                     return `Bus ${display}${more}`;
                                                 })()

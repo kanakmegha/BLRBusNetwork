@@ -1,18 +1,16 @@
 import { useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import type { PathResult, Stop } from "../engine/types";
-import type { DataManager } from "../engine/data_manager";
 import { formatSecondsAsTime } from "../utils/geo";
 
 interface JourneyDetailsProps {
   selectedPath: PathResult;
   stopMap: Map<string, Stop>;
-  dataManager: DataManager;
   onBusClick: (busNumber: string) => void;
   onClose: () => void;
 }
 
-export function JourneyDetails({ selectedPath, stopMap, dataManager, onBusClick, onClose }: JourneyDetailsProps) {
+export function JourneyDetails({ selectedPath, stopMap, onBusClick, onClose }: JourneyDetailsProps) {
   const [expandedSegments, setExpandedSegments] = useState<Set<number>>(new Set());
 
   const toggleExpand = (idx: number) => {
@@ -70,15 +68,11 @@ export function JourneyDetails({ selectedPath, stopMap, dataManager, onBusClick,
                   {seg.routeId === "WALKING" 
                     ? "Walking" 
                     : (() => {
-                        const nums = dataManager.getBusNumbersForSegment(
-                          seg.fromStopId, 
-                          seg.toStopId, 
-                          seg.stops?.map(s => s.stop_id) || []
-                        );
-                        if (nums.length === 0) return dataManager.getDisplayNumber(seg.routeId);
+                        const nums = (seg as any).busNumbers || [];
+                        if (nums.length === 0) return (seg as any).displayName || seg.routeName || "Bus";
                         
                         const primary = nums[0].split(' ')[0];
-                        const others = nums.slice(1).map(n => n.split(' ')[0]);
+                        const others = nums.slice(1).map((n: string) => n.split(' ')[0]);
                         
                         const hasLetters = /[A-Z]/i.test(primary);
                         const badgeText = hasLetters ? primary : `Bus ${primary}`;
@@ -113,7 +107,7 @@ export function JourneyDetails({ selectedPath, stopMap, dataManager, onBusClick,
                                         >
                                           {primary}
                                         </span>
-                                        {others.map(n => (
+                                        {others.map((n: string) => (
                                           <span 
                                             key={n} 
                                             onClick={() => onBusClick(n)}
