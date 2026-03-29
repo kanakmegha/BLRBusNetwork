@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { Map as GoogleMap } from "./components/Map";
-import { MetroMap } from "./components/MetroMap";
 import { SearchBox } from "./components/SearchBox";
 import { useTransit } from "./hooks/useTransit";
 import { Suspense, lazy } from "react";
@@ -8,6 +7,9 @@ import { Suspense, lazy } from "react";
 const LazyBusScheduleTable = lazy(() => import("./components/BusScheduleTable").then(m => ({ default: m.BusScheduleTable })));
 const LazyJourneyDetails = lazy(() => import("./components/JourneyDetails").then(m => ({ default: m.JourneyDetails })));
 const LazyRouteResults = lazy(() => import("./components/RouteResults").then(m => ({ default: m.RouteResults })));
+const LazyRouteExplorer = lazy(() => import("./components/RouteExplorer").then(m => ({ default: m.RouteExplorer })));
+const LazyMetroMap = lazy(() => import("./components/MetroMap").then(m => ({ default: m.MetroMap })));
+
 import type { PathResult, TransitFilter } from "./engine/types";
 import "./App.css";
 
@@ -60,33 +62,6 @@ function App() {
     }
   }, [isReady, findNearestStop, fromStopId, stops, explorerRoute]);
 
-  if (error) {
-    return (
-      <div className="h-screen w-screen bg-[#0a0a0a] flex items-center justify-center p-6">
-        <div className="max-w-md w-full bg-[#1e1e1e] border border-red-500/20 rounded-[32px] p-10 text-center shadow-[0_32px_64px_-16px_rgba(255,0,0,0.1)]">
-          <div className="w-20 h-20 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
-            <svg className="w-10 h-10 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-          </div>
-          <h2 className="text-2xl font-black text-white mb-2 tracking-tight">Data Load Failed</h2>
-          <p className="text-gray-400 text-sm mb-8 leading-relaxed">
-            {error}
-          </p>
-          <button 
-            onClick={() => window.location.reload()}
-            className="w-full bg-white text-black font-black py-4 rounded-2xl hover:bg-gray-200 transition-colors uppercase tracking-widest text-xs"
-          >
-            Retry Connection
-          </button>
-          <p className="mt-6 text-[10px] text-gray-600 uppercase tracking-widest font-bold">
-            BLR Transit Diagnostic System
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   const handleSearch = async (fromValue: string, toValue: string) => {
     if (!fromValue || !toValue) return;
     
@@ -102,7 +77,6 @@ function App() {
       console.error("LFS check failed", e);
     }
 
-    // Ensure Deep Search: Clear previous results and states entirely
     setIsSearching(true);
     setHasSearched(false);
     setResults([]);
@@ -120,7 +94,6 @@ function App() {
   };
 
   const handleCriteriaChange = (criteria: TransitFilter) => {
-    // ONLY update the UI state (Draft State)
     setSelectedCriteria(criteria);
   };
 
@@ -129,7 +102,6 @@ function App() {
     if (nearest) {
       setToStopId(nearest.stop_id);
       setDestStopName(nearest.stop_name);
-      // LOCKDOWN: no auto-search here
     }
   };
 
@@ -141,7 +113,6 @@ function App() {
       setToStopId(stopId);
       setDestStopName(stop?.stop_name || null);
     }
-    // LOCKDOWN: no auto-search here
   };
 
   const handleBusClick = async (busNumber: string) => {
@@ -179,28 +150,28 @@ function App() {
             Retry Connection
           </button>
         </div>
-      ) : !isReady ? (
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full animate-spin">
-          </div>
-          <p className="text-white font-medium animate-pulse">
-            Syncing Bengaluru Transit Data...
-          </p>
-          <span className="text-[10px] text-gray-400 mt-2 font-medium tracking-tight">Namma Route Optimizer — Local Bengaluru Navigator</span>
-        </div>
       ) : (
           <>
+            {!isReady && (
+              <div className="absolute top-4 right-4 z-[200] bg-[#1e1e1e]/90 backdrop-blur-md px-4 py-2 rounded-full border border-purple-500/30 flex items-center gap-3 animate-in fade-in slide-in-from-right-4 duration-500">
+                <div className="w-3 h-3 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                <span className="text-[9px] font-black text-white uppercase tracking-widest">Syncing Transit Data...</span>
+              </div>
+            )}
+
             {showMetroMap
               ? (
-                <div className="absolute inset-0 z-0">
-                  <div className="absolute top-24 left-1/2 -translate-x-1/2 z-10 bg-purple-500/20 backdrop-blur-sm px-4 py-2 rounded-full border border-purple-500/30 text-white text-xs animate-pulse">
-                    Click stop for Origin | Right-click for Destination
+                <Suspense fallback={<div className="w-full h-full bg-[#121212] flex items-center justify-center text-white">Loading Metro Map...</div>}>
+                  <div className="absolute inset-0 z-0">
+                    <div className="absolute top-24 left-1/2 -translate-x-1/2 z-10 bg-purple-500/20 backdrop-blur-sm px-4 py-2 rounded-full border border-purple-500/30 text-white text-xs animate-pulse">
+                      Click stop for Origin | Right-click for Destination
+                    </div>
+                    <LazyMetroMap
+                      stops={stops}
+                      onSelectStation={handleSelectFromMap}
+                    />
                   </div>
-                  <MetroMap
-                    stops={stops}
-                    onSelectStation={handleSelectFromMap}
-                  />
-                </div>
+                </Suspense>
               )
               : (
                 <GoogleMap
@@ -265,56 +236,26 @@ function App() {
               />
             </Suspense>
 
-            {explorerRoute && (
-              <div className="absolute top-24 left-1/2 -translate-x-1/2 z-[110] flex flex-col items-center gap-6 w-full px-6 max-h-[70vh] overflow-y-auto">
-                <div className="bg-[#1e1e1e]/90 backdrop-blur-md px-6 py-4 rounded-3xl border border-green-500/30 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.5)] flex items-center gap-6 animate-in fade-in slide-in-from-top-8 duration-500 w-fit">
-                  <div className="flex flex-col">
-                    <span className="text-[10px] text-green-500 font-black uppercase tracking-[0.2em] mb-1">Route Explorer</span>
-                    <div className="flex items-center gap-3">
-                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                      <span className="text-white font-black text-2xl tracking-tighter">Bus {explorerRoute}</span>
-                    </div>
-                  </div>
-                  <div className="w-px h-10 bg-white/10" />
-                  
-                  <div className="flex items-center gap-2">
-                    <button 
-                      onClick={() => {
-                        const url = new URL(window.location.href);
-                        url.searchParams.set("route", explorerRoute);
-                        navigator.clipboard.writeText(url.toString());
-                        alert("Shareable link copied to clipboard!");
-                      }}
-                      className="group relative w-12 h-12 bg-white/5 hover:bg-green-500/20 rounded-2xl flex items-center justify-center transition-all duration-300 active:scale-90"
-                      title="Share this route"
-                    >
-                      <svg className="w-5 h-5 text-white group-hover:text-green-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 100-5.368 3 3 0 000 5.368zm0 10.736a3 3 0 100-5.368 3 3 0 000 5.368z" />
-                      </svg>
-                    </button>
-
-                    <button 
-                      onClick={() => {
-                        setExplorerRoute(null);
-                        setExplorerPath([]);
-                        const url = new URL(window.location.href);
-                        url.searchParams.delete("route");
-                        window.history.pushState({}, "", url.toString());
-                      }}
-                      className="group relative w-12 h-12 bg-white/5 hover:bg-red-500/20 rounded-2xl flex items-center justify-center transition-all duration-300 active:scale-90"
-                    >
-                      <svg className="w-6 h-6 text-white group-hover:text-red-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-
-                <Suspense fallback={<div className="text-white text-[10px] uppercase tracking-widest animate-pulse">Loading Schedule...</div>}>
-                  {explorerRoute === "378" && <LazyBusScheduleTable />}
-                </Suspense>
-              </div>
-            )}
+            <Suspense fallback={null}>
+              {explorerRoute && (
+                <LazyRouteExplorer
+                  explorerRoute={explorerRoute}
+                  onShare={() => {
+                    const url = new URL(window.location.href);
+                    url.searchParams.set("route", explorerRoute);
+                    navigator.clipboard.writeText(url.toString());
+                    alert("Shareable link copied to clipboard!");
+                  }}
+                  onClose={() => {
+                    setExplorerRoute(null);
+                    setExplorerPath([]);
+                    const url = new URL(window.location.search);
+                    url.searchParams.delete("route");
+                    window.history.pushState({}, "", url.pathname + url.search);
+                  }}
+                />
+              )}
+            </Suspense>
 
             {(isSearching || (hasSearched && results.length === 0)) && (
               <div className="absolute bottom-32 left-1/2 -translate-x-1/2 z-[110] bg-[#1e1e1e]/90 backdrop-blur-md px-6 py-4 rounded-2xl border border-white/10 shadow-2xl flex flex-col items-center gap-2">
