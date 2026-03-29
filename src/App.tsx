@@ -4,6 +4,7 @@ import { MetroMap } from "./components/MetroMap";
 import { SearchBox } from "./components/SearchBox";
 import { RouteResults } from "./components/RouteResults";
 import { JourneyDetails } from "./components/JourneyDetails";
+import { BusScheduleTable } from "./components/BusScheduleTable";
 import { useTransit } from "./hooks/useTransit";
 import type { PathResult, TransitFilter } from "./engine/types";
 import "./App.css";
@@ -25,6 +26,37 @@ function App() {
   const [recenterCount, setRecenterCount] = useState(0);
   const [explorerRoute, setExplorerRoute] = useState<string | null>(null);
   const [explorerPath, setExplorerPath] = useState<any[]>([]);
+
+  const [isSearching, setIsSearching] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
+
+  useEffect(() => {
+    if (isReady && stops.length > 0) {
+      const map = new Map();
+      stops.forEach(s => map.set(s.stop_id, s));
+      setStopMap(map);
+
+      // Deep Linking: Check for shared route in URL
+      const params = new URLSearchParams(window.location.search);
+      const sharedRoute = params.get("route");
+      if (sharedRoute && !explorerRoute) {
+        handleBusClick(sharedRoute);
+      }
+
+      if (!fromStopId) {
+        navigator.geolocation.getCurrentPosition((pos) => {
+          const { latitude, longitude } = pos.coords;
+          const nearest = findNearestStop(latitude, longitude);
+          if (nearest) {
+            setFromStopId(nearest.stop_id);
+            setMapCenter({ lat: latitude, lng: longitude });
+          }
+        }, (err) => {
+          console.warn("Geolocation failed:", err);
+        });
+      }
+    }
+  }, [isReady, findNearestStop, fromStopId, stops, explorerRoute]);
 
   if (error) {
     return (
@@ -52,30 +84,6 @@ function App() {
       </div>
     );
   }
-
-  const [isSearching, setIsSearching] = useState(false);
-  const [hasSearched, setHasSearched] = useState(false);
-
-  useEffect(() => {
-    if (isReady && stops.length > 0) {
-      const map = new Map();
-      stops.forEach(s => map.set(s.stop_id, s));
-      setStopMap(map);
-
-      if (!fromStopId) {
-        navigator.geolocation.getCurrentPosition((pos) => {
-          const { latitude, longitude } = pos.coords;
-          const nearest = findNearestStop(latitude, longitude);
-          if (nearest) {
-            setFromStopId(nearest.stop_id);
-            setMapCenter({ lat: latitude, lng: longitude });
-          }
-        }, (err) => {
-          console.warn("Geolocation failed:", err);
-        });
-      }
-    }
-  }, [isReady, findNearestStop, fromStopId, stops]);
 
   const handleSearch = async (fromValue: string, toValue: string) => {
     if (!fromValue || !toValue) return;
@@ -144,10 +152,10 @@ function App() {
     <main className="relative w-full h-screen bg-[#121212] flex flex-col items-center justify-center overflow-hidden">
         {/* SEO Persistence Layer */}
         <h1 className="sr-only">
-          Namma Route: Bengaluru's Smartest BMTC Bus & Metro Navigator | Find Bangalore Bus Routes
+          Namma Route: Namma BMTC Online & Bangalore Bus Route Navigator | Find BMTC 378 Route Schedule
         </h1>
         <p className="sr-only">
-          Ultimate transit app for Bengaluru. Find the fastest and cheapest BMTC routes across the city from Wipro Gate to Cubbon Park and beyond.
+          Ultimate transit app for Bengaluru. Get Namma BMTC online routes, Bangalore bus maps, and official 378 bus schedules for Kengeri to Electronic City.
         </p>
 
       {error ? (
@@ -253,26 +261,51 @@ function App() {
             />
 
             {explorerRoute && (
-              <div className="absolute top-40 left-1/2 -translate-x-1/2 z-[110] bg-[#1e1e1e]/90 backdrop-blur-md px-6 py-4 rounded-3xl border border-green-500/30 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.5)] flex items-center gap-6 animate-in fade-in slide-in-from-top-8 duration-500">
-                <div className="flex flex-col">
-                  <span className="text-[10px] text-green-500 font-black uppercase tracking-[0.2em] mb-1">Route Explorer</span>
+              <div className="absolute top-24 left-1/2 -translate-x-1/2 z-[110] flex flex-col items-center gap-6 w-full px-6 max-h-[70vh] overflow-y-auto">
+                <div className="bg-[#1e1e1e]/90 backdrop-blur-md px-6 py-4 rounded-3xl border border-green-500/30 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.5)] flex items-center gap-6 animate-in fade-in slide-in-from-top-8 duration-500 w-fit">
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-green-500 font-black uppercase tracking-[0.2em] mb-1">Route Explorer</span>
+                    <div className="flex items-center gap-3">
+                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                      <span className="text-white font-black text-2xl tracking-tighter">Bus {explorerRoute}</span>
+                    </div>
+                  </div>
+                  <div className="w-px h-10 bg-white/10" />
+                  
                   <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                    <span className="text-white font-black text-2xl tracking-tighter">Bus {explorerRoute}</span>
+                    <button 
+                      onClick={() => {
+                        const url = new URL(window.location.href);
+                        url.searchParams.set("route", explorerRoute);
+                        navigator.clipboard.writeText(url.toString());
+                        alert("Shareable link copied to clipboard!");
+                      }}
+                      className="group relative w-12 h-12 bg-white/5 hover:bg-green-500/20 rounded-2xl flex items-center justify-center transition-all duration-300 active:scale-90"
+                      title="Share this route"
+                    >
+                      <svg className="w-5 h-5 text-white group-hover:text-green-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 100-5.368 3 3 0 000 5.368zm0 10.736a3 3 0 100-5.368 3 3 0 000 5.368z" />
+                      </svg>
+                    </button>
+
+                    <button 
+                      onClick={() => {
+                        setExplorerRoute(null);
+                        setExplorerPath([]);
+                        const url = new URL(window.location.href);
+                        url.searchParams.delete("route");
+                        window.history.pushState({}, "", url.toString());
+                      }}
+                      className="group relative w-12 h-12 bg-white/5 hover:bg-red-500/20 rounded-2xl flex items-center justify-center transition-all duration-300 active:scale-90"
+                    >
+                      <svg className="w-6 h-6 text-white group-hover:text-red-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
                   </div>
                 </div>
-                <div className="w-px h-10 bg-white/10" />
-                <button 
-                  onClick={() => {
-                    setExplorerRoute(null);
-                    setExplorerPath([]);
-                  }}
-                  className="group relative w-12 h-12 bg-white/5 hover:bg-red-500/20 rounded-2xl flex items-center justify-center transition-all duration-300 active:scale-90"
-                >
-                  <svg className="w-6 h-6 text-white group-hover:text-red-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
+
+                {explorerRoute === "378" && <BusScheduleTable />}
               </div>
             )}
 
@@ -310,6 +343,13 @@ function App() {
                 onClose={() => setSelectedPath(null)}
               />
             )}
+
+            {/* Visible SEO Footer */}
+            <div className="absolute bottom-4 right-8 z-[100] text-right pointer-events-none opacity-40 hover:opacity-100 transition-opacity">
+              <p className="text-[9px] text-white/50 font-medium uppercase tracking-[0.2em]">
+                Namma BMTC Online • Bangalore Bus Route Navigator • 378 Bus Schedule
+              </p>
+            </div>
           </>
         )}
     </main>
