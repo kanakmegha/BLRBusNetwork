@@ -3,6 +3,7 @@ import { Map as GoogleMap } from "./components/Map";
 import { SearchBox } from "./components/SearchBox";
 import { useTransit } from "./hooks/useTransit";
 import { Suspense, lazy } from "react";
+import { Analytics } from "@vercel/analytics/react";
 
 const LazyBusScheduleTable = lazy(() => import("./components/BusScheduleTable").then(m => ({ default: m.BusScheduleTable })));
 const LazyJourneyDetails = lazy(() => import("./components/JourneyDetails").then(m => ({ default: m.JourneyDetails })));
@@ -301,6 +302,7 @@ function App() {
             </div>
           </>
         )}
+      <Analytics />
     </main>
   );
 }
