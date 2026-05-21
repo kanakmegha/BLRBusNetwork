@@ -39,8 +39,8 @@ export function RouteResults({ results, selectedCriteria, selectedPath, onSelect
                         }}
                         className={`w-full md:min-w-[300px] p-4 rounded-2xl border-l-4 shadow-lg cursor-pointer transition-all active:scale-[0.98] ${
                             isSelected 
-                                ? 'bg-[#1a1a1a] border-l-purple-500 border-y-white/10 border-r-white/10 opacity-100' 
-                                : 'bg-white/5 border-l-transparent border-y-white/10 border-r-white/10 opacity-60 grayscale hover:grayscale-0 hover:opacity-100'
+                                ? 'bg-white/10 border-l-purple-500 border-y-white/10 border-r-white/10' 
+                                : 'bg-white/5 border-transparent hover:bg-white/10'
                         }`}
                     >
                         <div className="flex justify-between items-center mb-3">

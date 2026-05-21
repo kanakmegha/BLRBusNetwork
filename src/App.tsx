@@ -184,7 +184,11 @@ function App() {
                   allPaths={results}
                   explorerPath={explorerPath}
                   recenterCount={recenterCount}
-                  onMapInteract={() => setIsMinimized(true)}
+                  onMapInteract={() => {
+                      if (window.innerWidth <= 768) {
+                          setIsMinimized(true);
+                      }
+                  }}
                   onStopSelect={(s) => handleSelectFromMap(s.stop_id, "FROM")}
                 />
               </div>
@@ -248,13 +252,14 @@ function App() {
                  </button>
               </div>
 
-              {!isMinimized && (
-                  <>
+              <div className={`flex-col flex-1 overflow-hidden ${isMinimized ? 'hidden md:flex' : 'flex'}`}>
                     <div className="shrink-0 w-full">
                         <SearchBox
                         stops={stops}
                         onSearch={(from, to) => {
-                            setIsMinimized(false);
+                            if (window.innerWidth <= 768) {
+                                setIsMinimized(false);
+                            }
                             handleSearch(from, to);
                         }}
                         onPlaceSelect={handlePlaceSelect}
@@ -276,15 +281,16 @@ function App() {
                             selectedPath={selectedPath}
                             onSelect={(path: PathResult) => {
                                 setSelectedPath(path);
-                                setIsMinimized(true);
+                                if (window.innerWidth <= 768) {
+                                    setIsMinimized(true);
+                                }
                             }}
                             onBusClick={handleBusClick}
                             />
                         </Suspense>
                         </div>
                     )}
-                  </>
-              )}
+              </div>
             </div>
 
             <Suspense fallback={null}>
