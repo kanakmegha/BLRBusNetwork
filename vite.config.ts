@@ -67,6 +67,10 @@ export default defineConfig({
                 statuses: [0, 200]
               }
             }
+          },
+          {
+            urlPattern: /^https:\/\/maps\.(googleapis|gstatic)\.com\/.*/i,
+            handler: 'NetworkOnly',
           }
         ]
       }

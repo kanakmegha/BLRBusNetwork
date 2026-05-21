@@ -51,11 +51,19 @@ export function Map(
             }
         };
 
+        const handleAuthFailure = () => {
+            setMapError("Maps failed to load. Please check your internet connection or API restrictions.");
+        };
+
         if ((window as any).google) {
             initMap();
         } else {
             window.addEventListener('google-maps-loaded', initMap);
-            return () => window.removeEventListener('google-maps-loaded', initMap);
+            window.addEventListener('google-maps-auth-failure', handleAuthFailure);
+            return () => {
+                window.removeEventListener('google-maps-loaded', initMap);
+                window.removeEventListener('google-maps-auth-failure', handleAuthFailure);
+            };
         }
     }, [center]);
 
@@ -342,9 +350,17 @@ export function Map(
     if (mapError) {
         return (
             <div className="w-full h-full min-h-[500px] rounded-2xl bg-[#121212] flex items-center justify-center p-8 text-center text-white font-mono shadow-2xl">
-                <div className="bg-red-500/20 p-6 rounded-xl border border-red-500/50">
-                    <h2 className="text-red-400 font-bold mb-2">Map Error</h2>
-                    <p className="text-sm text-gray-300">{mapError}</p>
+                <div className="bg-red-500/20 p-6 rounded-xl border border-red-500/50 flex flex-col items-center gap-4">
+                    <div>
+                        <h2 className="text-red-400 font-bold mb-2">Map Error</h2>
+                        <p className="text-sm text-gray-300">{mapError}</p>
+                    </div>
+                    <button 
+                        onClick={() => window.location.reload()}
+                        className="px-4 py-2 bg-red-500/30 hover:bg-red-500/50 border border-red-500/50 rounded-lg text-sm transition-all"
+                    >
+                        Retry Connection
+                    </button>
                 </div>
             </div>
         );
