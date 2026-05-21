@@ -31,10 +31,11 @@ export function Map(
     const polylines = useRef<google.maps.Polyline[]>([]);
 
     useEffect(() => {
-        const initMap = () => {
+        const initMap = async () => {
             try {
-                if (mapRef.current && !googleMap.current && (window as any).google?.maps?.Map) {
-                    googleMap.current = new (window as any).google.maps.Map(mapRef.current, {
+                if (mapRef.current && !googleMap.current && (window as any).google) {
+                    const { Map } = await (window as any).google.maps.importLibrary("maps");
+                    googleMap.current = new Map(mapRef.current, {
                         center,
                         zoom: 12,
                         disableDefaultUI: true,
@@ -50,7 +51,7 @@ export function Map(
             }
         };
 
-        if ((window as any).google?.maps?.Map) {
+        if ((window as any).google) {
             initMap();
         } else {
             window.addEventListener('google-maps-loaded', initMap);
@@ -99,11 +100,14 @@ export function Map(
 
         const EXPLORER_COLOR = "#22c55e"; // Neon Green
 
-        const renderPath = (path: PathResult, pathIdx: number, isSelected: boolean, isMuted: boolean = false) => {
+        const renderPath = async (path: PathResult, pathIdx: number, isSelected: boolean, isMuted: boolean = false) => {
             if (!googleMap.current) return;
             const pathBounds = new google.maps.LatLngBounds();
             let lastColorIdx = -1;
             
+            const { AdvancedMarkerElement } = await (window as any).google.maps.importLibrary("marker");
+            const { Polyline } = await (window as any).google.maps.importLibrary("maps");
+
             path.segments.forEach((seg, sIdx) => {
                 const isWalking = seg.routeId === "WALKING";
                 
@@ -133,7 +137,7 @@ export function Map(
                 // 2. Segment Outlining (Inline/Outline effect)
                 if (!isWalking && isSelected && !isMuted) {
                     polylines.current.push(
-                        new google.maps.Polyline({
+                        new Polyline({
                             path: pathCoords,
                             strokeColor: "#000000",
                             strokeWeight: 14, // Thicker black background
@@ -145,7 +149,7 @@ export function Map(
                 }
 
                 polylines.current.push(
-                    new google.maps.Polyline({
+                    new Polyline({
                         path: pathCoords,
                         strokeColor,
                         strokeWeight: isSelected ? 8 : 4,
@@ -170,7 +174,7 @@ export function Map(
                     el.style.boxSizing = "border-box";
                     
                     markers.current.push(
-                        new (window as any).google.maps.marker.AdvancedMarkerElement({
+                        new AdvancedMarkerElement({
                             position: { lat: seg.toStopLat, lng: seg.toStopLon },
                             map: googleMap.current!,
                             content: el,
@@ -191,7 +195,7 @@ export function Map(
                         el.style.borderRadius = "50%";
                         el.style.boxSizing = "border-box";
 
-                        markers.current.push(new (window as any).google.maps.marker.AdvancedMarkerElement({
+                        markers.current.push(new AdvancedMarkerElement({
                             position: { lat: stop.stop_lat, lng: stop.stop_lon },
                             map: googleMap.current!,
                             content: el,
@@ -203,12 +207,15 @@ export function Map(
             return pathBounds;
         };
 
-        const updateMarkers = () => {
+        const updateMarkers = async () => {
             if (!googleMap.current) return;
             try {
                 clearOverlays();
                 const currentZoom = googleMap.current.getZoom() || 12;
                 const bounds = googleMap.current.getBounds();
+                
+                const { AdvancedMarkerElement } = await (window as any).google.maps.importLibrary("marker");
+                const { Polyline } = await (window as any).google.maps.importLibrary("maps");
 
                 // 1. User Location Marker
                 const userEl = document.createElement("div");
@@ -219,7 +226,7 @@ export function Map(
                 userEl.style.borderRadius = "50%";
                 userEl.style.boxShadow = "0 0 10px rgba(79,70,229,0.5)";
                 
-                new (window as any).google.maps.marker.AdvancedMarkerElement({
+                new AdvancedMarkerElement({
                     position: center,
                     map: googleMap.current,
                     content: userEl,
@@ -235,7 +242,7 @@ export function Map(
                 pathCoords.forEach(c => totalBounds.extend(c));
 
                 polylines.current.push(
-                    new google.maps.Polyline({
+                    new Polyline({
                         path: pathCoords,
                         strokeColor: EXPLORER_COLOR,
                         strokeWeight: 10,
@@ -255,7 +262,7 @@ export function Map(
                     el.style.boxSizing = "border-box";
 
                     markers.current.push(
-                        new (window as any).google.maps.marker.AdvancedMarkerElement({
+                        new AdvancedMarkerElement({
                             position: { lat: s.stop_lat, lng: s.stop_lon },
                             map: googleMap.current!,
                             content: el,
@@ -265,9 +272,9 @@ export function Map(
                 });
 
                 // Also render search results but muted
-                allPaths.forEach((path, idx) => {
-                    renderPath(path, idx, path === selectedPath, true);
-                });
+                for (let idx = 0; idx < allPaths.length; idx++) {
+                    await renderPath(allPaths[idx], idx, allPaths[idx] === selectedPath, true);
+                }
             } else if (allPaths.length > 0) {
                 // Sort to draw selected on top
                 const sortedPaths = [...allPaths].sort((a, b) => {
@@ -276,14 +283,14 @@ export function Map(
                     return 0;
                 });
 
-                sortedPaths.forEach((path) => {
+                for (const path of sortedPaths) {
                     const isSelected = path === selectedPath;
                     const originalIdx = allPaths.indexOf(path);
-                    const pathBounds = renderPath(path, originalIdx, isSelected, false);
+                    const pathBounds = await renderPath(path, originalIdx, isSelected, false);
                     if (pathBounds && !pathBounds.isEmpty()) {
                         totalBounds.union(pathBounds);
                     }
-                });
+                }
             }
             
             if (!totalBounds.isEmpty()) {
@@ -300,7 +307,7 @@ export function Map(
                         el.style.border = "1px solid rgba(255,255,255,0.8)";
                         el.style.borderRadius = "50%";
                         
-                        const marker = new (window as any).google.maps.marker.AdvancedMarkerElement({
+                        const marker = new AdvancedMarkerElement({
                             position: latLng,
                             map: googleMap.current,
                             content: el,

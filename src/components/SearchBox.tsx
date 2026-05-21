@@ -72,9 +72,10 @@ export function SearchBox(
             return;
         }
 
-        if ((window as any).google && (window as any).google.maps.places.AutocompleteSuggestion) {
+        if ((window as any).google) {
+            const { AutocompleteSessionToken, AutocompleteSuggestion } = await (window as any).google.maps.importLibrary("places");
             if (!sessionToken.current) {
-                sessionToken.current = new (window as any).google.maps.places.AutocompleteSessionToken();
+                sessionToken.current = new AutocompleteSessionToken();
             }
             try {
                 const request = {
@@ -82,7 +83,7 @@ export function SearchBox(
                     sessionToken: sessionToken.current,
                     includedRegionCodes: ["IN"],
                 };
-                const { suggestions: apiSuggestions } = await (window as any).google.maps.places.AutocompleteSuggestion.fetchAutocompleteSuggestions(request);
+                const { suggestions: apiSuggestions } = await AutocompleteSuggestion.fetchAutocompleteSuggestions(request);
                 
                 // We map this to match our rendering structure.
                 // The new API gives .placePrediction.text.text and .placePrediction.placeId
@@ -102,12 +103,13 @@ export function SearchBox(
         }
     };
 
-    const handleSuggestionClick = (placeId: string, description: string) => {
+    const handleSuggestionClick = async (placeId: string, description: string) => {
         setDestinationInput(description);
         setSuggestions([]);
         setIsGeocoding(true);
 
-        const geocoder = new (window as any).google.maps.Geocoder();
+        const { Geocoder } = await (window as any).google.maps.importLibrary("geocoding");
+        const geocoder = new Geocoder();
         geocoder.geocode({ placeId }, (results: any, status: any) => {
             setIsGeocoding(false);
             if (status === "OK" && results[0] && onPlaceSelect) {
@@ -118,7 +120,8 @@ export function SearchBox(
         });
         
         if ((window as any).google) {
-            sessionToken.current = new (window as any).google.maps.places.AutocompleteSessionToken();
+            const { AutocompleteSessionToken } = await (window as any).google.maps.importLibrary("places");
+            sessionToken.current = new AutocompleteSessionToken();
         }
     };
 
@@ -137,7 +140,8 @@ export function SearchBox(
             const address = destinationInput;
             setSuggestions([]);
             setIsGeocoding(true);
-            const geocoder = new (window as any).google.maps.Geocoder();
+            const { Geocoder } = await (window as any).google.maps.importLibrary("geocoding");
+            const geocoder = new Geocoder();
             geocoder.geocode({
                 address,
                 componentRestrictions: { country: "IN" },
