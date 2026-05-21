@@ -4,7 +4,6 @@ import { SearchBox } from "./components/SearchBox";
 import { useTransit } from "./hooks/useTransit";
 import { Suspense, lazy } from "react";
 
-const LazyJourneyDetails = lazy(() => import("./components/JourneyDetails").then(m => ({ default: m.JourneyDetails })));
 const LazyRouteResults = lazy(() => import("./components/RouteResults").then(m => ({ default: m.RouteResults })));
 const LazyRouteExplorer = lazy(() => import("./components/RouteExplorer").then(m => ({ default: m.RouteExplorer })));
 const LazyMetroMap = lazy(() => import("./components/MetroMap").then(m => ({ default: m.MetroMap })));
@@ -16,16 +15,16 @@ function App() {
   const { isReady, error, isCalculating, stops, findRoute, findNearestStop, getRoutePath } = useTransit();
   const [results, setResults] = useState<PathResult[]>([]);
   const [selectedPath, setSelectedPath] = useState<PathResult | null>(null);
-  const [stopMap, setStopMap] = useState<Map<string, any>>(new Map());
   const [showMetroMap, setShowMetroMap] = useState(false);
   const [fromStopId, setFromStopId] = useState("");
   const [toStopId, setToStopId] = useState("");
+  const [originStopName, setOriginStopName] = useState<string | null>(null);
+  const [destStopName, setDestStopName] = useState<string | null>(null);
   const [selectedCriteria, setSelectedCriteria] = useState<TransitFilter>("FASTEST");
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number }>({
     lat: 12.9716,
     lng: 77.5946,
   });
-  const [destStopName, setDestStopName] = useState<string | null>(null);
   const [recenterCount, setRecenterCount] = useState(0);
   const [explorerRoute, setExplorerRoute] = useState<string | null>(null);
   const [explorerPath, setExplorerPath] = useState<any[]>([]);
@@ -35,10 +34,6 @@ function App() {
 
   useEffect(() => {
     if (isReady && stops.length > 0) {
-      const map = new Map();
-      stops.forEach(s => map.set(s.stop_id, s));
-      setStopMap(map);
-
       // Deep Linking: Check for shared route in URL
       const params = new URLSearchParams(window.location.search);
       const sharedRoute = params.get("route");
@@ -101,7 +96,7 @@ function App() {
 
       if (type === "FROM") {
         setFromStopId(nearest.stop_id);
-        // Assuming we add a setOriginStopName state later if needed, but the search box handles text.
+        setOriginStopName(label);
         setMapCenter({ lat, lng });
       } else {
         setToStopId(nearest.stop_id);
@@ -111,10 +106,11 @@ function App() {
   };
 
   const handleSelectFromMap = (stopId: string, type: "FROM" | "TO") => {
+    const stop = stops.find((s) => s.stop_id === stopId);
     if (type === "FROM") {
       setFromStopId(stopId);
+      setOriginStopName(stop?.stop_name || null);
     } else {
-      const stop = stops.find((s) => s.stop_id === stopId);
       setToStopId(stopId);
       setDestStopName(stop?.stop_name || null);
     }
@@ -229,11 +225,11 @@ function App() {
               border-t border-white/10 md:border md:border-white/10
               shadow-[0_-20px_50px_rgba(0,0,0,0.5)] md:shadow-[0_20px_50px_rgba(0,0,0,0.5)]
               flex flex-col transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]
-              ${results.length > 0 ? 'h-[85vh] md:h-auto md:max-h-[calc(100vh-64px)]' : 'h-[45vh] min-h-[350px] md:min-h-0 md:h-auto'}
+              ${results.length > 0 ? 'h-[70vh] md:h-auto md:max-h-[calc(100vh-64px)]' : 'h-[45vh] min-h-[350px] md:min-h-0 md:h-auto'}
             `}>
               {/* Pull handle for mobile */}
-              <div className="w-full flex justify-center pt-3 pb-0 md:hidden shrink-0">
-                 <div className="w-[40px] h-[4px] bg-white/20 rounded-full" />
+              <div className="w-full flex justify-center pt-2 pb-0 md:hidden shrink-0">
+                 <div className="w-[48px] h-[5px] bg-[#555] rounded-full" />
               </div>
 
               <div className="shrink-0 w-full">
@@ -245,6 +241,7 @@ function App() {
                   selectedCriteria={selectedCriteria}
                   initialFrom={fromStopId}
                   initialTo={toStopId}
+                  originStopName={originStopName}
                   destStopName={destStopName}
                 />
               </div>
@@ -323,17 +320,6 @@ function App() {
                   )}
               </div>
             )}
-
-            <Suspense fallback={null}>
-              {selectedPath && (
-                <LazyJourneyDetails
-                  selectedPath={selectedPath}
-                  stopMap={stopMap}
-                  onBusClick={handleBusClick}
-                  onClose={() => setSelectedPath(null)}
-                />
-              )}
-            </Suspense>
 
             {/* Visible SEO Footer */}
             <div className="absolute bottom-4 right-8 z-[100] text-right pointer-events-none opacity-40 hover:opacity-100 transition-opacity">

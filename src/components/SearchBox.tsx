@@ -10,6 +10,7 @@ interface SearchBoxProps {
     selectedCriteria?: "FASTEST" | "MIN_FARE" | "MIN_INTERCHANGES";
     initialFrom?: string;
     initialTo?: string;
+    originStopName?: string | null;
     destStopName?: string | null;
 }
 
@@ -24,6 +25,7 @@ export function SearchBox(
         selectedCriteria = "FASTEST",
         initialFrom,
         initialTo,
+        originStopName,
         destStopName,
     }: SearchBoxProps,
 ) {
@@ -217,33 +219,28 @@ export function SearchBox(
     };
 
     return (
-        <div className="w-full flex flex-col space-y-2.5 p-3 md:p-6 pb-2">
-            <div className="flex justify-between items-center">
-                <h1 className="text-[14px] md:text-xl font-black text-white tracking-tight font-['Outfit'] whitespace-nowrap">
+        <div className="w-full flex flex-col p-3 md:p-6 pb-2">
+            <div className="flex justify-between items-center mb-3 h-[44px]">
+                <h1 className="text-[16px] md:text-xl font-black text-white tracking-tight font-['Outfit'] whitespace-nowrap">
                     Namma <span className="text-purple-500">Route</span>
                 </h1>
-                <div className="flex gap-1.5 md:gap-2">
+                <div className="flex gap-2">
                     {[
-                        { id: "FASTEST", label: "Fastest", icon: "⚡" },
-                        { id: "MIN_FARE", label: "Min Fare", icon: "₹" },
-                        {
-                            id: "MIN_INTERCHANGES",
-                            label: "Min Int",
-                            icon: "🔄",
-                        },
+                        { id: "FASTEST", icon: "⚡" },
+                        { id: "MIN_FARE", icon: "₹" },
+                        { id: "MIN_INTERCHANGES", icon: "⇄" },
                     ].map((opt) => (
                         <button
                             key={opt.id}
-                            aria-label={opt.label}
+                            aria-label={opt.id}
                             onClick={() => onCriteriaChange?.(opt.id as any)}
-                            className={`flex items-center justify-center gap-1 h-[36px] px-2.5 rounded-full text-[11px] font-bold transition-all ${
+                            className={`flex items-center justify-center w-[36px] h-[36px] rounded-lg text-[14px] font-bold transition-all ${
                                 selectedCriteria === opt.id
-                                    ? "bg-purple-600 text-white shadow-md border-purple-400"
-                                    : "bg-transparent text-gray-400 border border-white/10 hover:border-purple-500/50"
+                                    ? "bg-purple-600 text-white shadow-md"
+                                    : "bg-transparent text-gray-400 hover:bg-white/5"
                             }`}
                         >
                             <span>{opt.icon}</span>
-                            <span className="hidden sm:inline">{opt.label}</span>
                         </button>
                     ))}
                 </div>
@@ -338,6 +335,16 @@ export function SearchBox(
                         🎯 Use my location
                     </button>
                 )}
+                {originStopName && (
+                    <div className="flex items-center gap-2 mt-1 px-1">
+                        <span className="text-[10px] text-green-400 font-bold bg-green-500/10 px-2 py-0.5 rounded-full whitespace-nowrap">
+                            NEAREST STOP
+                        </span>
+                        <span className="text-[10px] text-gray-400 font-medium truncate">
+                            {originStopName}
+                        </span>
+                    </div>
+                )}
             </div>
 
             <div className="space-y-1">
@@ -420,7 +427,7 @@ export function SearchBox(
                 </div>
                 {destStopName && (
                     <div className="flex items-center gap-2 mt-1 px-1">
-                        <span className="text-[10px] text-purple-400 font-bold bg-purple-500/10 px-2 py-0.5 rounded-full">
+                        <span className="text-[10px] text-green-400 font-bold bg-green-500/10 px-2 py-0.5 rounded-full whitespace-nowrap">
                             NEAREST STOP
                         </span>
                         <span className="text-[10px] text-gray-400 font-medium truncate">
@@ -430,12 +437,14 @@ export function SearchBox(
                 )}
             </div>
 
-            <button
-                onClick={handleSearch}
-                className={`w-full h-[48px] font-bold rounded-2xl transition-all shadow-lg active:scale-[0.98] text-[16px] tracking-wide mt-1 ${originInput && destinationInput ? 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white' : 'bg-[#2a2a2a] text-gray-500 cursor-not-allowed'}`}
-            >
-                Find Optimal Path
-            </button>
+            <div className="sticky bottom-0 z-[200] pt-1 pb-1 bg-[#111111]/95 md:bg-transparent">
+                <button
+                    onClick={handleSearch}
+                    className={`w-full h-[48px] font-bold rounded-2xl transition-all shadow-lg active:scale-[0.98] text-[16px] tracking-wide ${originInput && destinationInput ? 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white' : 'bg-[#2a2a2a] text-gray-500 cursor-not-allowed'}`}
+                >
+                    Find Optimal Path
+                </button>
+            </div>
 
             {!destinationInput && stops.length > 0 && (
                 <div className="pt-4 border-t border-white/5 mt-2">

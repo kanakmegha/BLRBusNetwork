@@ -19,8 +19,10 @@ export function haversine(
 }
 
 export function formatSecondsAsTime(s: number): string {
-    const h = Math.floor(s / 3600).toString().padStart(2, "0");
+    let h = Math.floor(s / 3600);
     const m = Math.floor((s % 3600) / 60).toString().padStart(2, "0");
-    const sec = (s % 60).toString().padStart(2, "0");
-    return `${h}:${m}:${sec}`;
+    const period = h >= 12 && h < 24 ? "PM" : "AM";
+    h = h % 12;
+    if (h === 0) h = 12;
+    return `${h}:${m} ${period}`;
 }

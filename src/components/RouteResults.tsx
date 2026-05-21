@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { PathResult } from "../engine/types";
 import { formatSecondsAsTime } from "../utils/geo";
 
@@ -10,6 +10,8 @@ interface RouteResultsProps {
 }
 
 export function RouteResults({ results, selectedCriteria, onSelect, onBusClick }: RouteResultsProps) {
+    const [expandedPathIdx, setExpandedPathIdx] = useState<number | null>(null);
+
     const sortedResults = useMemo(() => {
         return [...results].sort((a, b) => {
             if (selectedCriteria === "FASTEST") return a.totalTime - b.totalTime;
@@ -24,11 +26,16 @@ export function RouteResults({ results, selectedCriteria, onSelect, onBusClick }
     return (
         <div className="flex flex-col gap-4 p-4 md:p-0">
             <div className="flex flex-col md:flex-row gap-4 overflow-y-auto md:overflow-x-auto pb-4 scrollbar-hide -webkit-overflow-scrolling-touch">
-                {sortedResults.map((result, idx) => (
+                {sortedResults.map((result, idx) => {
+                    const isExpanded = expandedPathIdx === idx;
+                    return (
                     <div
                         key={idx}
-                        onClick={() => onSelect(result)}
-                        className="w-full md:min-w-[300px] bg-white/5 p-4 rounded-2xl border border-white/10 shadow-lg cursor-pointer hover:border-purple-500 transition-all active:scale-[0.98]"
+                        onClick={() => {
+                            onSelect(result);
+                            setExpandedPathIdx(isExpanded ? null : idx);
+                        }}
+                        className={`w-full md:min-w-[300px] bg-white/5 p-4 rounded-2xl border ${isExpanded ? 'border-purple-500' : 'border-white/10'} shadow-lg cursor-pointer transition-all active:scale-[0.98]`}
                     >
                         <div className="flex justify-between items-center mb-3">
                             <span className="text-purple-400 font-bold text-sm">
@@ -39,34 +46,37 @@ export function RouteResults({ results, selectedCriteria, onSelect, onBusClick }
                             </span>
                         </div>
 
-                        <div className="text-2xl font-bold text-white mb-1">
-                            {Math.round(result.totalTime / 60)}{" "}
-                            <span className="text-sm font-normal text-gray-400">
-                                min
+                        <div className="flex items-center gap-3 text-sm text-gray-300 font-medium mb-2">
+                            <span className="flex items-center gap-1 text-white text-xl font-bold">
+                                ⚡ {Math.round(result.totalTime / 60)}<span className="text-sm font-normal text-gray-400">min</span>
                             </span>
+                            <span>•</span>
+                            <span>💰 ₹{result.totalFare}</span>
+                            <span>•</span>
+                            <span>🔄 {result.transfers} transfers</span>
+                        </div>
+                        
+                        <div className="text-xs text-gray-400 font-medium mb-4">
+                            Arrives {formatSecondsAsTime(
+                                result.segments[result.segments.length - 1].arrivalTime
+                            )}
                         </div>
 
-                        <div className="flex items-center gap-2 overflow-hidden">
+                        <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap min-w-fit pb-2 scrollbar-hide" style={{ WebkitOverflowScrolling: 'touch' }}>
                             {result.segments.map((seg, sidx) => (
                                 <div
                                     key={sidx}
                                     className="flex items-center gap-1 shrink-0"
                                 >
                                     <div
-                                        className={`px-2 py-1 rounded text-[10px] font-bold ${
+                                        className={`px-3 py-1.5 rounded-lg text-[11px] font-bold ${
                                             seg.routeId === "WALKING"
                                                 ? "bg-gray-600"
-                                                : seg.routeId.startsWith(
-                                                        "PURPLE",
-                                                    )
+                                                : seg.routeId.startsWith("PURPLE")
                                                 ? "bg-purple-600"
-                                                : seg.routeId.startsWith(
-                                                        "GREEN",
-                                                    )
+                                                : seg.routeId.startsWith("GREEN")
                                                 ? "bg-green-600"
-                                                : seg.routeId.startsWith(
-                                                        "YELLOW",
-                                                    )
+                                                : seg.routeId.startsWith("YELLOW")
                                                 ? "bg-yellow-600"
                                                 : "bg-blue-600"
                                         }`}
@@ -90,78 +100,71 @@ export function RouteResults({ results, selectedCriteria, onSelect, onBusClick }
                                             })()}
                                     </div>
                                     {sidx < result.segments.length - 1 && (
-                                        <span className="text-gray-600">→</span>
+                                        <span className="text-gray-600 font-bold px-1">→</span>
                                     )}
                                 </div>
                             ))}
                         </div>
 
-                        <div className="mt-4 pt-4 border-t border-[#333] flex justify-between text-xs text-gray-500">
-                            <span>
-                                Arrives {formatSecondsAsTime(
-                                    result.segments[result.segments.length - 1]
-                                        .arrivalTime,
-                                )}
-                            </span>
-                            <span className="text-white font-bold text-sm">
-                                ₹{result.totalFare}
-                            </span>
+                        <div className="mt-3 text-center text-xs text-purple-400 font-bold">
+                            {isExpanded ? "▲ Hide details" : "▼ See step by step"}
                         </div>
 
-                        <div className="mt-4 space-y-3 max-h-48 overflow-y-auto scrollbar-hide">
-                            {result.segments.map((seg, sidx) => (
-                                <div
-                                    key={sidx}
-                                    className="relative pl-4 border-l border-[#333]"
-                                >
+                        {isExpanded && (
+                            <div className="mt-4 pt-4 border-t border-[#333] space-y-4 overflow-y-auto scrollbar-hide">
+                                {result.segments.map((seg, sidx) => (
                                     <div
-                                        className={`absolute left-[-5px] top-1.5 w-2.5 h-2.5 rounded-full border-2 border-[#1e1e1e] ${
-                                            seg.routeId === "WALKING"
-                                                ? "bg-gray-500"
-                                                : "bg-purple-500"
-                                        }`}
-                                    />
-                                    <div className="flex justify-between items-start">
-                                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                                            {seg.routeId === "WALKING" 
-                                                ? "Walking" 
-                                                : (() => {
-                                                    const nums = (seg as any).busNumbers || [];
-                                                    if (nums.length === 0) return seg.routeName || "Bus";
-                                                    const display = nums.slice(0, 2).map((n: string) => n.replace('Bus ', '').split(' ')[0]).join(", ");
-                                                    const more = nums.length > 2 ? ` +${nums.length - 2} more` : "";
-                                                    return `Bus ${display}${more}`;
-                                                })()
-                                            }
-                                            {seg.stopCount
-                                                ? ` • ${seg.stopCount} stops`
-                                                : ""}
+                                        key={sidx}
+                                        className="relative pl-4 border-l border-[#333]"
+                                    >
+                                        <div
+                                            className={`absolute left-[-5px] top-1.5 w-2.5 h-2.5 rounded-full border-2 border-[#1e1e1e] ${
+                                                seg.routeId === "WALKING"
+                                                    ? "bg-gray-500"
+                                                    : "bg-purple-500"
+                                            }`}
+                                        />
+                                        <div className="flex justify-between items-start mb-1">
+                                            <div className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">
+                                                {seg.routeId === "WALKING" 
+                                                    ? `WALKING • ${Math.round(seg.distance || 0)}m • ${Math.round((seg.arrivalTime - seg.departureTime)/60)} min`
+                                                    : (() => {
+                                                        const nums = (seg as any).busNumbers || [];
+                                                        if (nums.length === 0) return seg.routeName || "Bus";
+                                                        const display = nums.slice(0, 2).map((n: string) => n.replace('Bus ', '').split(' ')[0]).join(", ");
+                                                        return `BUS ${display} • ${seg.stopCount || 0} STOPS`;
+                                                    })()
+                                                }
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div className="text-[11px] text-white font-medium">
-                                        {seg.stops?.[0]?.stop_name}
-                                    </div>
-                                    {seg.stops && seg.stops.length > 2 && (
-                                        <div className="text-[9px] text-gray-500 my-1 space-y-0.5">
-                                            {seg.stops.slice(1, -1).map((
-                                                s,
-                                                i,
-                                            ) => (
-                                                <div key={i}>
-                                                    • {s.stop_name}
-                                                </div>
-                                            ))}
+                                        
+                                        {seg.routeId !== "WALKING" && (seg as any).busNumbers?.length > 2 && (
+                                            <div className="text-[9px] text-gray-500 mb-1">
+                                                +{(seg as any).busNumbers.length - 2} more options
+                                            </div>
+                                        )}
+
+                                        <div className="text-[12px] text-white font-medium">
+                                            {seg.stops?.[0]?.stop_name}
                                         </div>
-                                    )}
-                                    <div className="text-[11px] text-white font-medium">
-                                        {seg.stops?.slice(-1)[0]?.stop_name ||
-                                            "..."}
+                                        {seg.stops && seg.stops.length > 2 && (
+                                            <div className="text-[10px] text-gray-500 my-1 space-y-0.5 border-l-2 border-white/10 ml-1 pl-2">
+                                                {seg.stops.slice(1, -1).map((s, i) => (
+                                                    <div key={i}>{s.stop_name}</div>
+                                                ))}
+                                            </div>
+                                        )}
+                                        {seg.stops && seg.stops.length > 1 && (
+                                            <div className="text-[12px] text-white font-medium mt-1">
+                                                {seg.stops?.slice(-1)[0]?.stop_name || "..."}
+                                            </div>
+                                        )}
                                     </div>
-                                </div>
-                            ))}
-                        </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
-                ))}
+                )})}
             </div>
         </div>
     );
