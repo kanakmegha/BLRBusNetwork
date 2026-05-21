@@ -233,10 +233,10 @@ function App() {
               </div>
               )}
 
-            <div className="absolute bottom-[calc(env(safe-area-inset-bottom)+180px)] md:bottom-10 right-4 md:right-auto md:left-10 z-[100] flex flex-col items-end md:items-start gap-3">
+            <div className="absolute top-6 right-4 md:top-auto md:bottom-10 md:left-10 md:right-auto z-[100] flex flex-col items-end md:items-start gap-3">
               <button
                 onClick={() => setShowMetroMap(!showMetroMap)}
-                className="bg-[#1e1e1e]/90 backdrop-blur-md px-4 py-3 md:px-6 md:py-3 rounded-full border border-purple-500/50 text-white font-bold text-xs md:text-sm shadow-2xl hover:bg-purple-600 transition-all flex items-center gap-2"
+                className="bg-[#111111]/90 backdrop-blur-md px-4 py-3 md:px-6 md:py-3 rounded-full border border-purple-500/50 text-white font-bold text-xs md:text-sm shadow-2xl hover:bg-purple-600 transition-all flex items-center gap-2"
               >
                 {showMetroMap
                   ? "🗺️ Map"
@@ -246,7 +246,7 @@ function App() {
               {selectedPath && !showMetroMap && (
                 <button
                   onClick={() => setRecenterCount(prev => prev + 1)}
-                  className="bg-emerald-500/90 backdrop-blur-md px-4 py-3 md:px-6 md:py-3 rounded-full border border-emerald-400/50 text-white font-bold text-xs md:text-sm shadow-2xl hover:bg-emerald-600 transition-all flex items-center gap-2 animate-in fade-in slide-in-from-bottom-4 duration-500"
+                  className="bg-[#111111]/90 backdrop-blur-md px-4 py-3 md:px-6 md:py-3 rounded-full border border-emerald-400/50 text-white font-bold text-xs md:text-sm shadow-2xl hover:bg-emerald-600 transition-all flex items-center gap-2 animate-in fade-in slide-in-from-right-4 duration-500"
                 >
                   🎯 Center
                 </button>
@@ -266,14 +266,15 @@ function App() {
             <div className={`
               absolute bottom-0 left-0 w-full z-[120]
               md:top-8 md:left-8 md:bottom-auto md:w-[400px]
-              bg-[#1e1e1e]/95 backdrop-blur-xl md:rounded-3xl rounded-t-[32px] 
+              bg-[#111111]/95 backdrop-blur-[20px] md:rounded-[24px] rounded-t-[24px] 
+              border-t border-white/10 md:border md:border-white/10
               shadow-[0_-20px_50px_rgba(0,0,0,0.5)] md:shadow-[0_20px_50px_rgba(0,0,0,0.5)]
-              flex flex-col transition-all duration-500 ease-in-out
-              ${results.length > 0 ? 'h-[85vh] md:h-auto md:max-h-[calc(100vh-64px)]' : 'h-auto'}
+              flex flex-col transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]
+              ${results.length > 0 ? 'h-[85vh] md:h-auto md:max-h-[calc(100vh-64px)]' : 'h-[45vh] min-h-[350px] md:min-h-0 md:h-auto'}
             `}>
               {/* Pull handle for mobile */}
-              <div className="w-full flex justify-center pt-3 pb-1 md:hidden shrink-0">
-                 <div className="w-12 h-1.5 bg-white/20 rounded-full" />
+              <div className="w-full flex justify-center pt-3 pb-0 md:hidden shrink-0">
+                 <div className="w-[40px] h-[4px] bg-white/20 rounded-full" />
               </div>
 
               <div className="shrink-0 w-full">

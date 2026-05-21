@@ -153,61 +153,61 @@ export function SearchBox(
     };
 
     return (
-        <div className="w-full flex flex-col space-y-4 p-4 md:p-6 pb-2">
+        <div className="w-full flex flex-col space-y-2.5 p-3 md:p-6 pb-2">
             <div className="flex justify-between items-center">
-                <h1 className="text-xl font-black text-white tracking-tight font-['Outfit']">
+                <h1 className="text-[14px] md:text-xl font-black text-white tracking-tight font-['Outfit'] whitespace-nowrap">
                     Namma <span className="text-purple-500">Route</span>
                 </h1>
-                <div className="flex gap-2">
+                <div className="flex gap-1.5 md:gap-2">
                     {[
                         { id: "FASTEST", label: "Fastest", icon: "⚡" },
                         { id: "MIN_FARE", label: "Min Fare", icon: "₹" },
                         {
                             id: "MIN_INTERCHANGES",
-                            label: "Min Interchange",
+                            label: "Min Int",
                             icon: "🔄",
                         },
                     ].map((opt) => (
                         <button
                             key={opt.id}
                             onClick={() => onCriteriaChange?.(opt.id as any)}
-                            className={`flex-1 flex items-center justify-center gap-1.5 h-11 rounded-xl text-[10px] md:text-xs font-black uppercase tracking-tighter transition-all ${
+                            className={`flex items-center justify-center gap-1 h-[36px] px-2.5 rounded-full text-[11px] font-bold transition-all ${
                                 selectedCriteria === opt.id
-                                    ? "bg-purple-600 text-white shadow-lg shadow-purple-500/30 border-purple-400"
-                                    : "bg-[#121212] text-gray-400 border border-white/5 hover:border-purple-500/50"
+                                    ? "bg-purple-600 text-white shadow-md border-purple-400"
+                                    : "bg-transparent text-gray-400 border border-white/10 hover:border-purple-500/50"
                             }`}
                         >
-                            <span>{opt.label}</span>
-                            {selectedCriteria === opt.id && (
-                                <span className="text-xs">✓</span>
-                            )}
+                            <span>{opt.icon}</span>
+                            <span className="hidden sm:inline">{opt.label}</span>
                         </button>
                     ))}
                 </div>
             </div>
 
-            <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] ml-1">
-                    Origin
-                </label>
-                <select
-                    value={from}
-                    onChange={(e) => setFrom(e.target.value)}
-                    className="w-full h-[52px] bg-[#121212] text-white border border-white/5 rounded-2xl px-4 text-[16px] focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition-all font-medium appearance-none"
-                >
-                    <option value="" disabled>Detecting location...</option>
-                    {stops.map((s) => (
-                        <option key={s.stop_id} value={s.stop_id}>
-                            {s.stop_name}
-                        </option>
-                    ))}
-                </select>
+            <div className="space-y-1 mt-1">
+                <div className="relative">
+                    <select
+                        value={from}
+                        onChange={(e) => setFrom(e.target.value)}
+                        className="w-full h-[48px] bg-[#121212] text-white border border-white/5 rounded-2xl pl-10 pr-4 text-[16px] focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition-all font-medium appearance-none"
+                    >
+                        <option value="" disabled>Detecting location...</option>
+                        {stops.map((s) => (
+                            <option key={s.stop_id} value={s.stop_id}>
+                                {s.stop_name}
+                            </option>
+                        ))}
+                    </select>
+                    <div className="absolute left-3.5 top-[14px] text-blue-500">
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                    </div>
+                </div>
             </div>
 
-            <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] ml-1">
-                    Destination
-                </label>
+            <div className="space-y-1">
                 <div className="relative group">
                     <input
                         ref={toInputRef}
@@ -220,8 +220,8 @@ export function SearchBox(
                             }
                         }}
                         onKeyDown={handleKeyDown}
-                        placeholder="Search landmark or area..."
-                        className="w-full h-[52px] bg-[#121212] text-white border border-white/5 rounded-2xl pl-12 pr-4 text-[16px] focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition-all font-medium placeholder:text-gray-500"
+                        placeholder="Search destination..."
+                        className="w-full h-[48px] bg-[#121212] text-white border border-white/5 rounded-2xl pl-10 pr-10 text-[16px] focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition-all font-medium placeholder:text-gray-500"
                     />
                     <div className="absolute left-3.5 top-[15px] text-gray-600 group-focus-within:text-purple-500 transition-colors">
                         {isGeocoding
@@ -251,7 +251,7 @@ export function SearchBox(
                                 setSuggestions([]);
                                 toInputRef.current?.focus();
                             }}
-                            className="absolute right-3.5 top-[15px] text-gray-500 hover:text-white transition-colors"
+                            className="absolute right-3 top-[14px] text-gray-500 hover:text-white transition-colors"
                         >
                             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -300,15 +300,15 @@ export function SearchBox(
 
             <button
                 onClick={handleSearch}
-                className="w-full h-[56px] bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold rounded-2xl transition-all shadow-[0_10px_20px_rgba(124,58,237,0.3)] active:scale-[0.98] text-[18px] tracking-wide mt-2"
+                className="w-full h-[48px] bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold rounded-2xl transition-all shadow-lg active:scale-[0.98] text-[16px] tracking-wide mt-1"
             >
                 Find Optimal Path
             </button>
 
             {!destinationInput && stops.length > 0 && (
-                <div className="pt-2 border-t border-white/5 mt-4">
-                    <h3 className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-3">Popular Destinations</h3>
-                    <div className="flex flex-wrap gap-2">
+                <div className="pt-4 border-t border-white/5 mt-2">
+                    <h3 className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-3" style={{ fontVariant: 'small-caps' }}>Popular Destinations</h3>
+                    <div className="flex overflow-x-auto gap-2 pb-2 scrollbar-hide -webkit-overflow-scrolling-touch snap-x">
                         {[
                             "Electronic City", 
                             "Kempegowda Majestic", 
@@ -319,7 +319,7 @@ export function SearchBox(
                             <button
                                 key={dest}
                                 onClick={() => setDestinationInput(dest)}
-                                className="px-3 py-1.5 bg-white/5 hover:bg-purple-500/20 text-gray-300 hover:text-purple-400 text-xs rounded-lg transition-colors border border-white/5 hover:border-purple-500/30"
+                                className="snap-center shrink-0 h-[36px] px-4 bg-[#2a2a2a] text-gray-300 text-[13px] font-medium rounded-full border border-[#444] hover:bg-purple-500/20 hover:text-purple-400 hover:border-purple-500/30 transition-colors whitespace-nowrap"
                             >
                                 {dest}
                             </button>
