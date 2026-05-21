@@ -33,7 +33,7 @@ export function Map(
     useEffect(() => {
         const initMap = () => {
             try {
-                if (mapRef.current && !googleMap.current && (window as any).google) {
+                if (mapRef.current && !googleMap.current && (window as any).google?.maps?.Map) {
                     googleMap.current = new (window as any).google.maps.Map(mapRef.current, {
                         center,
                         zoom: 12,
@@ -50,7 +50,7 @@ export function Map(
             }
         };
 
-        if ((window as any).google) {
+        if ((window as any).google?.maps?.Map) {
             initMap();
         } else {
             window.addEventListener('google-maps-loaded', initMap);

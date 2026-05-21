@@ -37,7 +37,8 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,json}'],
-        maximumFileSizeToCacheInBytes: 150000000, // 150MB to accommodate bmtc_stop_times.json
+        globIgnores: ['data/bmtc_stop_times.json'], // Managed by IndexedDB
+        maximumFileSizeToCacheInBytes: 5000000, // 5MB limit
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,

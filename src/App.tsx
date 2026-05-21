@@ -278,8 +278,17 @@ function App() {
                   onShare={() => {
                     const url = new URL(window.location.href);
                     url.searchParams.set("route", explorerRoute);
-                    navigator.clipboard.writeText(url.toString());
-                    alert("Shareable link copied to clipboard!");
+                    
+                    if (navigator.share) {
+                      navigator.share({
+                        title: `Namma Route: Bus ${explorerRoute}`,
+                        text: `Check out the schedule and route for BMTC Bus ${explorerRoute} on Namma Route!`,
+                        url: url.toString()
+                      }).catch((err) => console.log('Error sharing:', err));
+                    } else {
+                      navigator.clipboard.writeText(url.toString());
+                      alert("Shareable link copied to clipboard!");
+                    }
                   }}
                   onClose={() => {
                     setExplorerRoute(null);

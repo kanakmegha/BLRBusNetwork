@@ -122,6 +122,13 @@ export function SearchBox(
         }
     };
 
+    const handlePopularRoute = (startName: string, destName: string) => {
+        // Find approximate matches or just use Geocoder/Places
+        // For simplicity, we just pre-fill the destination and trigger search if start is available
+        setDestinationInput(destName);
+        // If we know the exact stop IDs, we could navigate immediately, but we will let user hit find.
+    };
+
     const handleKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (
             e.key === "Enter" && destinationInput &&
@@ -286,6 +293,29 @@ export function SearchBox(
             >
                 Find Optimal Path
             </button>
+
+            {!destinationInput && stops.length > 0 && (
+                <div className="pt-2 border-t border-white/5 mt-4">
+                    <h3 className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-3">Popular Destinations</h3>
+                    <div className="flex flex-wrap gap-2">
+                        {[
+                            "Electronic City", 
+                            "Kempegowda Majestic", 
+                            "Manyata Tech Park", 
+                            "Whitefield", 
+                            "Silk Board"
+                        ].map(dest => (
+                            <button
+                                key={dest}
+                                onClick={() => setDestinationInput(dest)}
+                                className="px-3 py-1.5 bg-white/5 hover:bg-purple-500/20 text-gray-300 hover:text-purple-400 text-xs rounded-lg transition-colors border border-white/5 hover:border-purple-500/30"
+                            >
+                                {dest}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
