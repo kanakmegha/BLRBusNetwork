@@ -1,4 +1,3 @@
-import React from "react";
 import { Suspense, lazy } from "react";
 
 const LazyBusScheduleTable = lazy(() => import("./BusScheduleTable").then(m => ({ default: m.BusScheduleTable })));

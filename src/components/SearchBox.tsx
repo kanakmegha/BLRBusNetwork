@@ -34,7 +34,7 @@ export function SearchBox(
     const [suggestions, setSuggestions] = useState<any[]>([]);
     const [recentSearches, setRecentSearches] = useState<any[]>([]);
     
-    const autocompleteService = useRef<any>(null);
+
     const sessionToken = useRef<any>(null);
 
     useEffect(() => {

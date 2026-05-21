@@ -1,6 +1,5 @@
 /// <reference types="@types/google.maps" />
 import { useEffect, useRef, useState } from "react";
-import mapStyles from "../assets/MapStyles.json";
 import type { PathResult, Stop } from "../engine/types";
 
 interface MapProps {

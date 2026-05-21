@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { Stop, TransitFilter } from "../engine/types";
 
 export function useTransit() {

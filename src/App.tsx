@@ -4,7 +4,6 @@ import { SearchBox } from "./components/SearchBox";
 import { useTransit } from "./hooks/useTransit";
 import { Suspense, lazy } from "react";
 
-const LazyBusScheduleTable = lazy(() => import("./components/BusScheduleTable").then(m => ({ default: m.BusScheduleTable })));
 const LazyJourneyDetails = lazy(() => import("./components/JourneyDetails").then(m => ({ default: m.JourneyDetails })));
 const LazyRouteResults = lazy(() => import("./components/RouteResults").then(m => ({ default: m.RouteResults })));
 const LazyRouteExplorer = lazy(() => import("./components/RouteExplorer").then(m => ({ default: m.RouteExplorer })));
