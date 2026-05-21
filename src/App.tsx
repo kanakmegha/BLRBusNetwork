@@ -134,7 +134,20 @@ function App() {
     const nearest = findNearestStop(lat, lng);
     if (nearest) {
       setToStopId(nearest.stop_id);
-      setDestStopName(nearest.stop_name);
+      
+      // Calculate walking distance from searched lat/lng to nearest bus stop
+      const R = 6371; // Radius of the earth in km
+      const dLat = (nearest.stop_lat - lat) * (Math.PI / 180);
+      const dLon = (nearest.stop_lon - lng) * (Math.PI / 180);
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat * (Math.PI / 180)) * Math.cos(nearest.stop_lat * (Math.PI / 180)) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const distanceInKm = R * c;
+      const walkMeters = Math.round(distanceInKm * 1000);
+      
+      setDestStopName(`${nearest.stop_name} (${walkMeters}m walk)`);
     }
   };
 
