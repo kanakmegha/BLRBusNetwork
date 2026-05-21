@@ -48,16 +48,50 @@ function App() {
       }
 
       if (!fromStopId) {
-        navigator.geolocation.getCurrentPosition((pos) => {
-          const { latitude, longitude } = pos.coords;
-          const nearest = findNearestStop(latitude, longitude);
-          if (nearest) {
-            setFromStopId(nearest.stop_id);
-            setMapCenter({ lat: latitude, lng: longitude });
+        let locationFound = false;
+
+        const setFallbackLocation = () => {
+          if (!locationFound) {
+            console.log("Using fallback location (Bangalore City Center).");
+            // Majestic Bus Stand coords
+            const lat = 12.9774;
+            const lng = 77.5714;
+            const nearest = findNearestStop(lat, lng);
+            if (nearest) {
+              setFromStopId(nearest.stop_id);
+              setMapCenter({ lat, lng });
+            }
           }
-        }, (err) => {
-          console.warn("Geolocation failed:", err);
-        });
+        };
+
+        const timeoutId = setTimeout(setFallbackLocation, 5000); // 5 sec timeout
+
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            locationFound = true;
+            clearTimeout(timeoutId);
+            const { latitude, longitude } = pos.coords;
+            // Check if roughly outside Bangalore
+            if (latitude < 12.5 || latitude > 13.5 || longitude < 77.0 || longitude > 78.0) {
+              alert("Showing Bangalore map. Allow location for personalized results.");
+              setFallbackLocation();
+              return;
+            }
+            
+            const nearest = findNearestStop(latitude, longitude);
+            if (nearest) {
+              setFromStopId(nearest.stop_id);
+              setMapCenter({ lat: latitude, lng: longitude });
+            }
+          },
+          (err) => {
+            console.warn("Geolocation failed:", err);
+            locationFound = true;
+            clearTimeout(timeoutId);
+            setFallbackLocation();
+          },
+          { timeout: 5000 }
+        );
       }
     }
   }, [isReady, findNearestStop, fromStopId, stops, explorerRoute]);
@@ -174,6 +208,7 @@ function App() {
                 </Suspense>
               )
               : (
+              <div className="absolute inset-0 z-0 pb-[300px] md:pb-0">
                 <GoogleMap
                   stops={stops}
                   center={mapCenter}
@@ -183,12 +218,13 @@ function App() {
                   recenterCount={recenterCount}
                   onStopSelect={(s) => handleSelectFromMap(s.stop_id, "FROM")}
                 />
+              </div>
               )}
 
             <div className="absolute bottom-10 left-10 z-[100] flex flex-col gap-3">
               <button
                 onClick={() => setShowMetroMap(!showMetroMap)}
-                className="bg-[#1e1e1e]/90 backdrop-blur-md px-6 py-3 rounded-full border border-purple-500/50 text-white font-bold text-sm shadow-2xl hover:bg-purple-600 transition-all flex items-center gap-2"
+                className="bg-[#1e1e1e]/90 backdrop-blur-md px-6 py-4 md:py-3 rounded-full border border-purple-500/50 text-white font-bold text-sm md:text-sm shadow-2xl hover:bg-purple-600 transition-all flex items-center gap-2"
               >
                 {showMetroMap
                   ? "🗺️ Switch to Google Map"
@@ -198,7 +234,7 @@ function App() {
               {selectedPath && !showMetroMap && (
                 <button
                   onClick={() => setRecenterCount(prev => prev + 1)}
-                  className="bg-emerald-500/90 backdrop-blur-md px-6 py-3 rounded-full border border-emerald-400/50 text-white font-bold text-sm shadow-2xl hover:bg-emerald-600 transition-all flex items-center gap-2 animate-in fade-in slide-in-from-bottom-4 duration-500"
+                  className="bg-emerald-500/90 backdrop-blur-md px-6 py-4 md:py-3 rounded-full border border-emerald-400/50 text-white font-bold text-sm md:text-sm shadow-2xl hover:bg-emerald-600 transition-all flex items-center gap-2 animate-in fade-in slide-in-from-bottom-4 duration-500"
                 >
                   🎯 Center on Route
                 </button>
@@ -214,7 +250,7 @@ function App() {
               </div>
             )}
 
-             <div className="absolute top-8 left-8 z-[120] flex flex-col items-start gap-4">
+             <div className="absolute bottom-0 left-0 w-full md:w-auto md:bottom-auto md:top-8 md:left-8 z-[120]">
               <SearchBox
                 stops={stops}
                 onSearch={handleSearch}

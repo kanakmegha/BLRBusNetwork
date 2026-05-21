@@ -1,5 +1,5 @@
 /// <reference types="@types/google.maps" />
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import mapStyles from "../assets/MapStyles.json";
 import type { PathResult, Stop } from "../engine/types";
 
@@ -26,41 +26,61 @@ export function Map(
 ) {
     const mapRef = useRef<HTMLDivElement>(null);
     const googleMap = useRef<google.maps.Map | null>(null);
-    const markers = useRef<google.maps.Marker[]>([]);
+    const [mapInitialized, setMapInitialized] = useState(false);
+    const [mapError, setMapError] = useState<string | null>(null);
+    const markers = useRef<any[]>([]);
     const polylines = useRef<google.maps.Polyline[]>([]);
 
     useEffect(() => {
-        if (mapRef.current && !googleMap.current) {
-            googleMap.current = new google.maps.Map(mapRef.current, {
-                center,
-                zoom: 12,
-                styles: mapStyles as google.maps.MapTypeStyle[],
-                disableDefaultUI: true,
-                backgroundColor: "#121212",
-                gestureHandling: "greedy",
-            });
+        const initMap = () => {
+            try {
+                if (mapRef.current && !googleMap.current && (window as any).google) {
+                    googleMap.current = new (window as any).google.maps.Map(mapRef.current, {
+                        center,
+                        zoom: 12,
+                        disableDefaultUI: true,
+                        backgroundColor: "#121212",
+                        gestureHandling: "greedy",
+                        colorScheme: "DARK",
+                        mapId: import.meta.env.VITE_GOOGLE_MAP_ID || "DEMO_MAP_ID", // Required for AdvancedMarkerElement
+                    });
+                    setMapInitialized(true);
+                }
+            } catch (err: any) {
+                setMapError(err.message || String(err));
+            }
+        };
+
+        if ((window as any).google) {
+            initMap();
+        } else {
+            window.addEventListener('google-maps-loaded', initMap);
+            return () => window.removeEventListener('google-maps-loaded', initMap);
         }
     }, [center]);
 
     // Clear existing overlay elements
     const clearOverlays = () => {
-        markers.current.forEach((m) => m.setMap(null));
+        markers.current.forEach((m) => {
+            if (m.setMap) m.setMap(null);
+            else m.map = null;
+        });
         polylines.current.forEach((p) => p.setMap(null));
         markers.current = [];
         polylines.current = [];
     };
 
     useEffect(() => {
-        if (!googleMap.current) return;
+        if (!googleMap.current || !mapInitialized) return;
         // Only auto-center if no path is being viewed
         if (!selectedPath) {
             googleMap.current.panTo(center);
             googleMap.current.setZoom(15);
         }
-    }, [allPaths, explorerPath, selectedPath, recenterCount]);
+    }, [allPaths, explorerPath, selectedPath, recenterCount, mapInitialized]);
 
     useEffect(() => {
-        if (!googleMap.current) return;
+        if (!googleMap.current || !mapInitialized) return;
 
         const SEGMENT_COLORS = [
             "#FF007F", // Neon Pink (Warm)
@@ -142,18 +162,19 @@ export function Map(
 
                 // 3. Transfer Nodes (Joint Markers)
                 if (isSelected && sIdx < path.segments.length - 1 && !isMuted) {
+                    const el = document.createElement("div");
+                    el.style.width = "14px";
+                    el.style.height = "14px";
+                    el.style.backgroundColor = "#ffffff";
+                    el.style.border = "4px solid #000000";
+                    el.style.borderRadius = "50%";
+                    el.style.boxSizing = "border-box";
+                    
                     markers.current.push(
-                        new google.maps.Marker({
+                        new (window as any).google.maps.marker.AdvancedMarkerElement({
                             position: { lat: seg.toStopLat, lng: seg.toStopLon },
                             map: googleMap.current!,
-                            icon: {
-                                path: google.maps.SymbolPath.CIRCLE,
-                                fillColor: "#ffffff",
-                                fillOpacity: 1,
-                                scale: 7,
-                                strokeWeight: 4,
-                                strokeColor: "#000000",
-                            },
+                            content: el,
                             zIndex: 1000,
                             title: "Transfer Point",
                         })
@@ -163,17 +184,18 @@ export function Map(
                 // Markers for internal stops (only if selected)
                 if (isSelected && seg.stops && !isMuted) {
                    seg.stops.forEach((stop) => {
-                        markers.current.push(new google.maps.Marker({
+                        const el = document.createElement("div");
+                        el.style.width = "10px";
+                        el.style.height = "10px";
+                        el.style.backgroundColor = strokeColor;
+                        el.style.border = "2px solid #000000";
+                        el.style.borderRadius = "50%";
+                        el.style.boxSizing = "border-box";
+
+                        markers.current.push(new (window as any).google.maps.marker.AdvancedMarkerElement({
                             position: { lat: stop.stop_lat, lng: stop.stop_lon },
                             map: googleMap.current!,
-                            icon: {
-                                path: google.maps.SymbolPath.CIRCLE,
-                                fillColor: strokeColor,
-                                fillOpacity: 1,
-                                scale: 5,
-                                strokeWeight: 2,
-                                strokeColor: "#000000",
-                            },
+                            content: el,
                         }));
                     });
                 }
@@ -184,25 +206,27 @@ export function Map(
 
         const updateMarkers = () => {
             if (!googleMap.current) return;
-            clearOverlays();
-            const currentZoom = googleMap.current.getZoom() || 12;
-            const bounds = googleMap.current.getBounds();
+            try {
+                clearOverlays();
+                const currentZoom = googleMap.current.getZoom() || 12;
+                const bounds = googleMap.current.getBounds();
 
-            // 1. User Location Marker
-            new google.maps.Marker({
-                position: center,
-                map: googleMap.current,
-                icon: {
-                    path: google.maps.SymbolPath.CIRCLE,
-                    fillColor: "#4f46e5",
-                    fillOpacity: 1,
-                    scale: 8,
-                    strokeWeight: 3,
-                    strokeColor: "#fff",
-                },
-                title: "Your Location",
-                zIndex: 1000,
-            });
+                // 1. User Location Marker
+                const userEl = document.createElement("div");
+                userEl.style.width = "16px";
+                userEl.style.height = "16px";
+                userEl.style.backgroundColor = "#4f46e5";
+                userEl.style.border = "3px solid #ffffff";
+                userEl.style.borderRadius = "50%";
+                userEl.style.boxShadow = "0 0 10px rgba(79,70,229,0.5)";
+                
+                new (window as any).google.maps.marker.AdvancedMarkerElement({
+                    position: center,
+                    map: googleMap.current,
+                    content: userEl,
+                    title: "Your Location",
+                    zIndex: 1000,
+                });
 
             // 2. Render Explorer Path or Search Results
             const totalBounds = new google.maps.LatLngBounds();
@@ -223,18 +247,19 @@ export function Map(
                 );
 
                 explorerPath.forEach(s => {
+                    const el = document.createElement("div");
+                    el.style.width = "12px";
+                    el.style.height = "12px";
+                    el.style.backgroundColor = EXPLORER_COLOR;
+                    el.style.border = "2px solid #ffffff";
+                    el.style.borderRadius = "50%";
+                    el.style.boxSizing = "border-box";
+
                     markers.current.push(
-                        new google.maps.Marker({
+                        new (window as any).google.maps.marker.AdvancedMarkerElement({
                             position: { lat: s.stop_lat, lng: s.stop_lon },
                             map: googleMap.current!,
-                            icon: {
-                                path: google.maps.SymbolPath.CIRCLE,
-                                fillColor: EXPLORER_COLOR,
-                                fillOpacity: 1,
-                                scale: 6,
-                                strokeWeight: 2,
-                                strokeColor: "#ffffff",
-                            },
+                            content: el,
                             title: s.stop_name,
                         })
                     );
@@ -269,22 +294,25 @@ export function Map(
                 stops.forEach((stop) => {
                     const latLng = { lat: stop.stop_lat, lng: stop.stop_lon };
                     if (bounds.contains(latLng)) {
-                        const marker = new google.maps.Marker({
+                        const el = document.createElement("div");
+                        el.style.width = "8px";
+                        el.style.height = "8px";
+                        el.style.backgroundColor = stop.line_code === "BUS" ? "rgba(59,130,246,0.6)" : "rgba(168,85,247,0.6)";
+                        el.style.border = "1px solid rgba(255,255,255,0.8)";
+                        el.style.borderRadius = "50%";
+                        
+                        const marker = new (window as any).google.maps.marker.AdvancedMarkerElement({
                             position: latLng,
                             map: googleMap.current,
-                            icon: {
-                                path: google.maps.SymbolPath.CIRCLE,
-                                fillColor: stop.line_code === "BUS" ? "#3b82f6" : "#a855f7",
-                                fillOpacity: 0.6,
-                                scale: 4,
-                                strokeWeight: 1,
-                                strokeColor: "#fff",
-                            },
+                            content: el,
                         });
                         marker.addListener("click", () => onStopSelect?.(stop));
                         markers.current.push(marker);
                     }
                 });
+            }
+            } catch (err: any) {
+                setMapError(err.message || String(err));
             }
         };
 
@@ -303,12 +331,25 @@ export function Map(
             google.maps.event.removeListener(idleListener);
             clearTimeout(debounceTimer);
         };
-    }, [stops, selectedPath, allPaths, explorerPath, onStopSelect, center, recenterCount]);
+    }, [stops, selectedPath, allPaths, explorerPath, onStopSelect, center, recenterCount, mapInitialized]);
+
+    if (mapError) {
+        return (
+            <div className="w-full h-full min-h-[500px] rounded-2xl bg-[#121212] flex items-center justify-center p-8 text-center text-white font-mono shadow-2xl">
+                <div className="bg-red-500/20 p-6 rounded-xl border border-red-500/50">
+                    <h2 className="text-red-400 font-bold mb-2">Map Error</h2>
+                    <p className="text-sm text-gray-300">{mapError}</p>
+                </div>
+            </div>
+        );
+    }
+
+    const hasCustomMapId = !!import.meta.env.VITE_GOOGLE_MAP_ID;
 
     return (
         <div
             ref={mapRef}
-            className="w-full h-full min-h-[500px] rounded-2xl overflow-hidden shadow-2xl"
+            className={`w-full h-full min-h-[500px] rounded-2xl overflow-hidden shadow-2xl bg-[#1e1e1e] ${!hasCustomMapId ? 'filter invert-[.9] hue-rotate-180' : ''}`}
         />
     );
 }

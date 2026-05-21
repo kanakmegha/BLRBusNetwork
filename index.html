@@ -7,15 +7,13 @@
     
     <meta name="google-site-verification" content="YnAWNAox1EjxvFbayOGj4ZP-ntuPf7YC1rNpHoe5gMA" />
     
-    <!-- Resource Pre-fetching -->
-    <link rel="preload" href="/data/bmtc_stops.json" as="fetch" crossorigin="anonymous">
-    <link rel="preload" href="/data/metro_stops.json" as="fetch" crossorigin="anonymous">
-    <link rel="preload" href="/data/bmtc_routes.json" as="fetch" crossorigin="anonymous">
-
+    <!-- Resource Pre-fetching removed due to unused preload warnings -->
     <!-- Primary SEO -->
     <title>Namma Route | Namma BMTC Online - Bangalore Bus Route Navigator</title>
-    <meta name="description" content="Namma Route: The ultimate BMTC bus navigator for Bengaluru. Find the fastest 'Namma BMTC Online' routes and Bangalore bus schedules across the city." />
-    <meta name="keywords" content="Namma BMTC Online, Bangalore bus route, BMTC 378 Route, Namma Route, transit app, Wipro Gate, Cubbon Park, Bangalore transit" />
+    <meta name="description" content="Namma Route: The ultimate BMTC bus route finder for Bengaluru. Find the fastest 'Namma BMTC Online' routes and Bangalore bus schedules across the city." />
+    <meta name="keywords" content="Namma BMTC Online, Bangalore bus route, BMTC route finder, Namma bus, Bengaluru transport, BMTC 378 Route, Namma Route, transit app, Wipro Gate, Cubbon Park, Bangalore transit" />
+    <meta name="theme-color" content="#121212" />
+    <link rel="apple-touch-icon" href="/pwa-192x192.png" />
     <meta name="author" content="Kanak Megha" />
 
     <!-- Open Graph / Facebook -->
@@ -55,8 +53,17 @@
     }
     </script>
 
+    <script>
+      // Required callback for loading=async
+      window.initMap = function() {
+        // Dispatch an event just in case our React components want to listen for it
+        window.dispatchEvent(new Event('google-maps-loaded'));
+      };
+    </script>
     <script
-      src="https://maps.googleapis.com/maps/api/js?key=%VITE_GOOGLE_MAPS_API_KEY%&libraries=places"
+      async
+      defer
+      src="https://maps.googleapis.com/maps/api/js?key=%VITE_GOOGLE_MAPS_API_KEY%&libraries=places,marker&loading=async&callback=initMap"
     ></script>
   </head>
   <body>

@@ -8,15 +8,17 @@ export function useTransit() {
     const [activeFilter] = useState<TransitFilter>("FASTEST");
     const [stops, setStops] = useState<Stop[]>([]);
     
-    // Web Worker Instance
-    const worker = useMemo(() => new Worker(new URL("../engine/routing.worker.ts", import.meta.url), { type: "module" }), []);
+    const [worker, setWorker] = useState<Worker | null>(null);
 
     useEffect(() => {
-        worker.onmessage = (e) => {
+        const newWorker = new Worker(new URL("../engine/routing.worker.ts", import.meta.url), { type: "module" });
+        setWorker(newWorker);
+
+        newWorker.onmessage = (e) => {
             const { type, payload } = e.data;
             switch (type) {
                 case "ready":
-                    worker.postMessage({ type: "getStops" });
+                    newWorker.postMessage({ type: "getStops" });
                     break;
                 case "stops":
                     setStops(payload);
@@ -28,10 +30,15 @@ export function useTransit() {
             }
         };
 
-        worker.postMessage({ type: "init" });
+        newWorker.onerror = (e) => {
+            console.error("Worker error:", e);
+            setError("Web Worker crashed: " + e.message);
+        };
 
-        return () => worker.terminate();
-    }, [worker]);
+        newWorker.postMessage({ type: "init" });
+
+        return () => newWorker.terminate();
+    }, []);
 
     const findRoute = useCallback(
         async (
@@ -46,18 +53,18 @@ export function useTransit() {
                 const handler = (e: MessageEvent) => {
                     const { type, payload } = e.data;
                     if (type === "results") {
-                        worker.removeEventListener("message", handler);
+                        worker?.removeEventListener("message", handler);
                         setIsCalculating(false);
                         resolve(payload);
                     } else if (type === "error") {
-                        worker.removeEventListener("message", handler);
+                        worker?.removeEventListener("message", handler);
                         setIsCalculating(false);
                         reject(new Error(payload));
                     }
                 };
 
-                worker.addEventListener("message", handler);
-                worker.postMessage({
+                worker?.addEventListener("message", handler);
+                worker?.postMessage({
                     type: "findRoute",
                     payload: { startId, destId, startTime, filter }
                 });
@@ -90,15 +97,15 @@ export function useTransit() {
                 const handler = (e: MessageEvent) => {
                     const { type, payload } = e.data;
                     if (type === "routePath") {
-                        worker.removeEventListener("message", handler);
+                        worker?.removeEventListener("message", handler);
                         resolve(payload);
                     } else if (type === "error") {
-                        worker.removeEventListener("message", handler);
+                        worker?.removeEventListener("message", handler);
                         reject(new Error(payload));
                     }
                 };
-                worker.addEventListener("message", handler);
-                worker.postMessage({ type: "getRoutePath", payload: { busNumber } });
+                worker?.addEventListener("message", handler);
+                worker?.postMessage({ type: "getRoutePath", payload: { busNumber } });
             });
         },
         [worker],
