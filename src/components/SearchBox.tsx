@@ -123,15 +123,6 @@ export function SearchBox(
             const { AutocompleteSessionToken } = await (window as any).google.maps.importLibrary("places");
             sessionToken.current = new AutocompleteSessionToken();
         }
-    };
-
-    const handlePopularRoute = (startName: string, destName: string) => {
-        // Find approximate matches or just use Geocoder/Places
-        // For simplicity, we just pre-fill the destination and trigger search if start is available
-        setDestinationInput(destName);
-        // If we know the exact stop IDs, we could navigate immediately, but we will let user hit find.
-    };
-
     const handleKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (
             e.key === "Enter" && destinationInput &&
