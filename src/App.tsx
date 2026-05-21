@@ -319,8 +319,14 @@ function App() {
                         url: url.toString()
                       }).catch((err) => console.log('Error sharing:', err));
                     } else {
-                      navigator.clipboard.writeText(url.toString());
-                      alert("Shareable link copied to clipboard!");
+                      navigator.clipboard.writeText(url.toString())
+                        .then(() => {
+                          alert("Shareable link copied to clipboard!");
+                        })
+                        .catch((err) => {
+                          console.error('Clipboard write failed:', err);
+                          alert("Failed to copy link. Please copy manually: " + url.toString());
+                        });
                     }
                   }}
                   onClose={() => {

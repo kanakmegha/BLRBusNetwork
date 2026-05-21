@@ -406,7 +406,8 @@ export function Map(
                 });
             }
             } catch (err: any) {
-                setMapError(err.message || String(err));
+                console.error("Error updating markers:", err);
+                // Continue with partial rendering rather than failing completely
             }
         };
 

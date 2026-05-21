@@ -170,6 +170,7 @@ export function SearchBox(
                     ].map((opt) => (
                         <button
                             key={opt.id}
+                            aria-label={opt.label}
                             onClick={() => onCriteriaChange?.(opt.id as any)}
                             className={`flex items-center justify-center gap-1 h-[36px] px-2.5 rounded-full text-[11px] font-bold transition-all ${
                                 selectedCriteria === opt.id
@@ -221,7 +222,7 @@ export function SearchBox(
                         }}
                         onKeyDown={handleKeyDown}
                         placeholder="Search destination..."
-                        className="w-full h-[48px] bg-[#121212] text-white border border-white/5 rounded-2xl pl-10 pr-10 text-[16px] focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition-all font-medium placeholder:text-gray-500"
+                        className="w-full h-[48px] bg-[#121212] text-white border border-white/5 rounded-2xl pl-10 pr-12 text-[16px] focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition-all font-medium placeholder:text-gray-500"
                     />
                     <div className="absolute left-3.5 top-[15px] text-gray-600 group-focus-within:text-purple-500 transition-colors">
                         {isGeocoding
@@ -308,7 +309,10 @@ export function SearchBox(
             {!destinationInput && stops.length > 0 && (
                 <div className="pt-4 border-t border-white/5 mt-2">
                     <h3 className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-3" style={{ fontVariant: 'small-caps' }}>Popular Destinations</h3>
-                    <div className="flex overflow-x-auto gap-2 pb-2 scrollbar-hide -webkit-overflow-scrolling-touch snap-x">
+                    <div 
+                        className="flex overflow-x-auto gap-2 pb-2 scrollbar-hide snap-x"
+                        style={{ WebkitOverflowScrolling: 'touch' }}
+                    >
                         {[
                             "Electronic City", 
                             "Kempegowda Majestic", 
