@@ -231,28 +231,32 @@ function App() {
               border-t border-white/10 md:border md:border-white/10
               shadow-[0_-20px_50px_rgba(0,0,0,0.5)] md:shadow-[0_20px_50px_rgba(0,0,0,0.5)]
               flex flex-col transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]
-              ${isMinimized ? 'h-[60px] md:h-auto overflow-hidden' : (results.length > 0 ? 'h-[70vh] md:h-auto md:max-h-[calc(100vh-64px)]' : 'h-[45vh] min-h-[350px] md:min-h-0 md:h-auto')}
+              ${isMinimized ? 'translate-y-[120%] md:translate-y-0 md:h-auto' : 'translate-y-0'}
+              ${results.length > 0 ? 'h-[70vh] md:h-auto md:max-h-[calc(100vh-64px)]' : 'h-[45vh] min-h-[350px] md:min-h-0 md:h-auto'}
             `}>
-              {/* Header with minimize button for mobile */}
+              {/* Header with drag handle and minimize button for mobile */}
               <div 
-                className="w-full flex justify-between items-center px-4 pt-3 pb-2 md:hidden shrink-0"
-                onClick={() => setIsMinimized(!isMinimized)}
+                className="w-full flex justify-between items-center px-6 pt-3 pb-2 md:hidden shrink-0 cursor-pointer"
+                onClick={() => setIsMinimized(true)}
+                onTouchStart={(e) => {
+                  const touch = e.touches[0];
+                  (window as any).panelTouchStartY = touch.clientY;
+                }}
+                onTouchEnd={(e) => {
+                  const touch = e.changedTouches[0];
+                  if (touch.clientY - (window as any).panelTouchStartY > 30) {
+                    setIsMinimized(true);
+                  }
+                }}
               >
-                 {isMinimized ? (
-                    <span className="text-[16px] font-black text-white tracking-tight font-['Outfit']">
-                        Namma <span className="text-purple-500">Route</span>
-                    </span>
-                 ) : (
-                    <div className="flex-1 flex justify-center">
-                        <div className="w-[48px] h-[5px] bg-[#555] rounded-full translate-x-4" />
-                    </div>
-                 )}
-                 <button className="text-gray-400 w-8 h-8 flex items-center justify-center font-bold">
-                   {isMinimized ? '˄' : '˅'}
+                 <div className="w-8" />
+                 <div className="w-[48px] h-[5px] bg-[#555] rounded-full" />
+                 <button className="text-gray-400 w-8 h-8 flex items-center justify-end font-bold text-lg">
+                   ˅
                  </button>
               </div>
 
-              <div className={`flex-col flex-1 overflow-hidden ${isMinimized ? 'hidden md:flex' : 'flex'}`}>
+              <div className="flex-col flex-1 overflow-hidden flex">
                     <div className="shrink-0 w-full">
                         <SearchBox
                         stops={stops}
@@ -291,6 +295,26 @@ function App() {
                         </div>
                     )}
               </div>
+            </div>
+
+            {/* Floating Pill for Mobile Minimized State */}
+            <div 
+              className={`md:hidden fixed left-1/2 -translate-x-1/2 bg-[#1a1a1a] border border-[#333] rounded-[32px] px-6 py-3 flex items-center justify-between gap-6 z-[9999] shadow-[0_4px_20px_rgba(0,0,0,0.5)] min-w-[200px] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${isMinimized ? 'bottom-6 opacity-100' : '-bottom-20 opacity-0 pointer-events-none'}`}
+              onClick={() => setIsMinimized(false)}
+              onTouchStart={(e) => {
+                const touch = e.touches[0];
+                (window as any).pillTouchStartY = touch.clientY;
+              }}
+              onTouchEnd={(e) => {
+                const touch = e.changedTouches[0];
+                if ((window as any).pillTouchStartY - touch.clientY > 30) {
+                  setIsMinimized(false);
+                }
+              }}
+            >
+              <div className="absolute -top-4 left-1/2 -translate-x-1/2 w-[48px] h-[5px] bg-[#555] rounded-full" />
+              <span className="font-bold text-white text-sm whitespace-nowrap tracking-tight">🔍 Namma Route</span>
+              <button className="text-gray-400 font-bold text-lg">˄</button>
             </div>
 
             <Suspense fallback={null}>
