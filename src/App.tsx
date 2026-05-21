@@ -46,54 +46,8 @@ function App() {
         handleBusClick(sharedRoute);
       }
 
-      if (!fromStopId) {
-        let locationFound = false;
-
-        const setFallbackLocation = () => {
-          if (!locationFound) {
-            console.log("Using fallback location (Bangalore City Center).");
-            // Majestic Bus Stand coords
-            const lat = 12.9774;
-            const lng = 77.5714;
-            const nearest = findNearestStop(lat, lng);
-            if (nearest) {
-              setFromStopId(nearest.stop_id);
-              setMapCenter({ lat, lng });
-            }
-          }
-        };
-
-        const timeoutId = setTimeout(setFallbackLocation, 5000); // 5 sec timeout
-
-        navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            locationFound = true;
-            clearTimeout(timeoutId);
-            const { latitude, longitude } = pos.coords;
-            // Check if roughly outside Bangalore
-            if (latitude < 12.5 || latitude > 13.5 || longitude < 77.0 || longitude > 78.0) {
-              alert("Showing Bangalore map. Allow location for personalized results.");
-              setFallbackLocation();
-              return;
-            }
-            
-            const nearest = findNearestStop(latitude, longitude);
-            if (nearest) {
-              setFromStopId(nearest.stop_id);
-              setMapCenter({ lat: latitude, lng: longitude });
-            }
-          },
-          (err) => {
-            console.warn("Geolocation failed:", err);
-            locationFound = true;
-            clearTimeout(timeoutId);
-            setFallbackLocation();
-          },
-          { timeout: 5000 }
-        );
-      }
     }
-  }, [isReady, findNearestStop, fromStopId, stops, explorerRoute]);
+  }, [isReady, findNearestStop, stops, explorerRoute]);
 
   const handleSearch = async (fromValue: string, toValue: string) => {
     if (!fromValue || !toValue) return;
@@ -130,12 +84,9 @@ function App() {
     setSelectedCriteria(criteria);
   };
 
-  const handleDestinationPlaceSelect = (lat: number, lng: number) => {
+  const handlePlaceSelect = (lat: number, lng: number, type: "FROM" | "TO") => {
     const nearest = findNearestStop(lat, lng);
     if (nearest) {
-      setToStopId(nearest.stop_id);
-      
-      // Calculate walking distance from searched lat/lng to nearest bus stop
       const R = 6371; // Radius of the earth in km
       const dLat = (nearest.stop_lat - lat) * (Math.PI / 180);
       const dLon = (nearest.stop_lon - lng) * (Math.PI / 180);
@@ -146,8 +97,16 @@ function App() {
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
       const distanceInKm = R * c;
       const walkMeters = Math.round(distanceInKm * 1000);
-      
-      setDestStopName(`${nearest.stop_name} (${walkMeters}m walk)`);
+      const label = `${nearest.stop_name} (${walkMeters}m walk)`;
+
+      if (type === "FROM") {
+        setFromStopId(nearest.stop_id);
+        // Assuming we add a setOriginStopName state later if needed, but the search box handles text.
+        setMapCenter({ lat, lng });
+      } else {
+        setToStopId(nearest.stop_id);
+        setDestStopName(label);
+      }
     }
   };
 
@@ -281,7 +240,7 @@ function App() {
                 <SearchBox
                   stops={stops}
                   onSearch={handleSearch}
-                  onPlaceSelect={handleDestinationPlaceSelect}
+                  onPlaceSelect={handlePlaceSelect}
                   onCriteriaChange={handleCriteriaChange}
                   selectedCriteria={selectedCriteria}
                   initialFrom={fromStopId}
