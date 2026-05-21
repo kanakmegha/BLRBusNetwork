@@ -29,6 +29,7 @@ export function Map(
     const [mapError, setMapError] = useState<string | null>(null);
     const markers = useRef<any[]>([]);
     const polylines = useRef<google.maps.Polyline[]>([]);
+    const lastBoundsFit = useRef<{ selectedPath: any, recenterCount: number }>({ selectedPath: null, recenterCount: -1 });
 
     useEffect(() => {
         const initMap = async () => {
@@ -36,8 +37,19 @@ export function Map(
                 if (mapRef.current && !googleMap.current && (window as any).google) {
                     const { Map } = await (window as any).google.maps.importLibrary("maps");
                     googleMap.current = new Map(mapRef.current, {
-                        center,
+                        center: { lat: 12.9716, lng: 77.5946 },
                         zoom: 12,
+                        minZoom: 10,
+                        maxZoom: 18,
+                        restriction: {
+                            latLngBounds: {
+                                north: 13.3,
+                                south: 12.7,
+                                east: 77.9,
+                                west: 77.3,
+                            },
+                            strictBounds: false,
+                        },
                         disableDefaultUI: true,
                         backgroundColor: "#121212",
                         gestureHandling: "greedy",
@@ -160,12 +172,16 @@ export function Map(
 
     useEffect(() => {
         if (!googleMap.current || !mapInitialized) return;
-        // Only auto-center if no path is being viewed
-        if (!selectedPath) {
-            googleMap.current.panTo(center);
-            googleMap.current.setZoom(15);
+        
+        if (selectedPath || allPaths.length > 0 || (explorerPath && explorerPath.length > 0)) {
+            // A route exists, the other useEffect handles markers and fitBounds already.
+            // But we can just trigger a slight zoom animation if needed, or let updateMarkers handle it.
+        } else {
+            // No route, center to Bangalore
+            googleMap.current.panTo({ lat: 12.9716, lng: 77.5946 });
+            googleMap.current.setZoom(12);
         }
-    }, [allPaths, explorerPath, selectedPath, recenterCount, mapInitialized]);
+    }, [recenterCount]);
 
     useEffect(() => {
         if (!googleMap.current || !mapInitialized) return;
@@ -220,7 +236,11 @@ export function Map(
                     ? seg.stops.map((s) => ({ lat: s.stop_lat, lng: s.stop_lon }))
                     : [{ lat: seg.fromStopLat, lng: seg.fromStopLon }, { lat: seg.toStopLat, lng: seg.toStopLon }];
 
-                pathCoords.forEach((c) => pathBounds.extend(c));
+                pathCoords.forEach((c) => {
+                    if (c && typeof c.lat === 'number' && typeof c.lng === 'number' && c.lat > 10 && c.lat < 15 && c.lng > 75 && c.lng < 80) {
+                        pathBounds.extend(c);
+                    }
+                });
 
                 // 2. Segment Outlining (Inline/Outline effect)
                 if (!isWalking && isSelected && !isMuted) {
@@ -239,13 +259,14 @@ export function Map(
                 polylines.current.push(
                     new Polyline({
                         path: pathCoords,
-                        strokeColor,
+                        strokeColor: isWalking ? "#888888" : strokeColor,
                         strokeWeight: isSelected ? 8 : 4,
                         strokeOpacity: isWalking ? 0 : (isMuted ? 0.1 : (isSelected ? 1.0 : 0.4)),
                         zIndex: isSelected ? 150 : 100,
                         icons: isWalking ? [{
-                            icon: { path: "M 0,-1 0,1", strokeOpacity: 1, scale: 5, strokeColor: "#ffffff" },
-                            repeat: "25px",
+                            icon: { path: "M 0,-1 0,1", strokeOpacity: 1, scale: 3, strokeColor: "#888888" },
+                            offset: "0",
+                            repeat: "10px",
                         }] : [],
                         map: googleMap.current!,
                     })
@@ -378,11 +399,78 @@ export function Map(
                     if (pathBounds && !pathBounds.isEmpty()) {
                         totalBounds.union(pathBounds);
                     }
+                    
+                    if (isSelected && path.segments.length > 0) {
+                        const firstSeg = path.segments[0];
+                        const lastSeg = path.segments[path.segments.length - 1];
+                        
+                        if (firstSeg.fromStopLat && firstSeg.fromStopLon) {
+                            const originEl = document.createElement("div");
+                            originEl.style.width = "18px";
+                            originEl.style.height = "18px";
+                            originEl.style.backgroundColor = "#3B82F6";
+                            originEl.style.border = "3px solid #ffffff";
+                            originEl.style.borderRadius = "50%";
+                            originEl.style.boxShadow = "0 0 10px rgba(59,130,246,0.8)";
+                            
+                            markers.current.push(
+                                new AdvancedMarkerElement({
+                                    position: { lat: firstSeg.fromStopLat, lng: firstSeg.fromStopLon },
+                                    map: googleMap.current!,
+                                    content: originEl,
+                                    zIndex: 2000,
+                                    title: "Origin",
+                                })
+                            );
+                        }
+
+                        if (lastSeg.toStopLat && lastSeg.toStopLon) {
+                            const destEl = document.createElement("div");
+                            destEl.style.width = "18px";
+                            destEl.style.height = "18px";
+                            destEl.style.backgroundColor = "#A855F7";
+                            destEl.style.border = "3px solid #ffffff";
+                            destEl.style.borderRadius = "50%";
+                            destEl.style.boxShadow = "0 0 10px rgba(168,85,247,0.8)";
+                            
+                            markers.current.push(
+                                new AdvancedMarkerElement({
+                                    position: { lat: lastSeg.toStopLat, lng: lastSeg.toStopLon },
+                                    map: googleMap.current!,
+                                    content: destEl,
+                                    zIndex: 2000,
+                                    title: "Destination",
+                                })
+                            );
+                        }
+                    }
                 }
             }
             
             if (!totalBounds.isEmpty()) {
-                 googleMap.current.fitBounds(totalBounds, { top: 80, right: 450, bottom: 80, left: 80 });
+                 const shouldFitBounds = lastBoundsFit.current.selectedPath !== selectedPath || lastBoundsFit.current.recenterCount !== recenterCount;
+
+                 if (shouldFitBounds) {
+                     const isMobile = window.innerWidth < 768;
+                     const bottomPadding = isMobile ? (window.innerHeight * 0.7) + 20 : 80;
+                     const rightPadding = isMobile ? 20 : 450;
+                     
+                     googleMap.current.fitBounds(totalBounds, { 
+                         top: 60, 
+                         right: rightPadding, 
+                         bottom: bottomPadding, 
+                         left: 20 
+                     });
+                     
+                     // Safety to prevent zooming out too much
+                     google.maps.event.addListenerOnce(googleMap.current, 'bounds_changed', () => {
+                         const z = googleMap.current!.getZoom();
+                         if (z !== undefined && z < 11) googleMap.current!.setZoom(11);
+                         if (z !== undefined && z > 15) googleMap.current!.setZoom(14);
+                     });
+
+                     lastBoundsFit.current = { selectedPath, recenterCount: recenterCount || 0 };
+                 }
             } else if (currentZoom > 15 && bounds) {
                 // 3. Show nearby stops
                 stops.forEach((stop) => {
