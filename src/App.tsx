@@ -21,6 +21,7 @@ function App() {
   const [originStopName, setOriginStopName] = useState<string | null>(null);
   const [destStopName, setDestStopName] = useState<string | null>(null);
   const [selectedCriteria, setSelectedCriteria] = useState<TransitFilter>("FASTEST");
+  const [isMinimized, setIsMinimized] = useState(false);
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number }>({
     lat: 12.9716,
     lng: 77.5946,
@@ -183,6 +184,7 @@ function App() {
                   allPaths={results}
                   explorerPath={explorerPath}
                   recenterCount={recenterCount}
+                  onMapInteract={() => setIsMinimized(true)}
                   onStopSelect={(s) => handleSelectFromMap(s.stop_id, "FROM")}
                 />
               </div>
@@ -225,38 +227,63 @@ function App() {
               border-t border-white/10 md:border md:border-white/10
               shadow-[0_-20px_50px_rgba(0,0,0,0.5)] md:shadow-[0_20px_50px_rgba(0,0,0,0.5)]
               flex flex-col transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]
-              ${results.length > 0 ? 'h-[70vh] md:h-auto md:max-h-[calc(100vh-64px)]' : 'h-[45vh] min-h-[350px] md:min-h-0 md:h-auto'}
+              ${isMinimized ? 'h-[60px] md:h-auto overflow-hidden' : (results.length > 0 ? 'h-[70vh] md:h-auto md:max-h-[calc(100vh-64px)]' : 'h-[45vh] min-h-[350px] md:min-h-0 md:h-auto')}
             `}>
-              {/* Pull handle for mobile */}
-              <div className="w-full flex justify-center pt-2 pb-0 md:hidden shrink-0">
-                 <div className="w-[48px] h-[5px] bg-[#555] rounded-full" />
+              {/* Header with minimize button for mobile */}
+              <div 
+                className="w-full flex justify-between items-center px-4 pt-3 pb-2 md:hidden shrink-0"
+                onClick={() => setIsMinimized(!isMinimized)}
+              >
+                 {isMinimized ? (
+                    <span className="text-[16px] font-black text-white tracking-tight font-['Outfit']">
+                        Namma <span className="text-purple-500">Route</span>
+                    </span>
+                 ) : (
+                    <div className="flex-1 flex justify-center">
+                        <div className="w-[48px] h-[5px] bg-[#555] rounded-full translate-x-4" />
+                    </div>
+                 )}
+                 <button className="text-gray-400 w-8 h-8 flex items-center justify-center font-bold">
+                   {isMinimized ? '˄' : '˅'}
+                 </button>
               </div>
 
-              <div className="shrink-0 w-full">
-                <SearchBox
-                  stops={stops}
-                  onSearch={handleSearch}
-                  onPlaceSelect={handlePlaceSelect}
-                  onCriteriaChange={handleCriteriaChange}
-                  selectedCriteria={selectedCriteria}
-                  initialFrom={fromStopId}
-                  initialTo={toStopId}
-                  originStopName={originStopName}
-                  destStopName={destStopName}
-                />
-              </div>
+              {!isMinimized && (
+                  <>
+                    <div className="shrink-0 w-full">
+                        <SearchBox
+                        stops={stops}
+                        onSearch={(from, to) => {
+                            setIsMinimized(false);
+                            handleSearch(from, to);
+                        }}
+                        onPlaceSelect={handlePlaceSelect}
+                        onCriteriaChange={handleCriteriaChange}
+                        selectedCriteria={selectedCriteria}
+                        initialFrom={fromStopId}
+                        initialTo={toStopId}
+                        originStopName={originStopName}
+                        destStopName={destStopName}
+                        />
+                    </div>
 
-              {results.length > 0 && (
-                <div className="flex-1 overflow-y-auto w-full pb-[env(safe-area-inset-bottom)] scrollbar-hide border-t border-white/5">
-                  <Suspense fallback={null}>
-                    <LazyRouteResults
-                      results={results}
-                      selectedCriteria={selectedCriteria}
-                      onSelect={(path: PathResult) => setSelectedPath(path)}
-                      onBusClick={handleBusClick}
-                    />
-                  </Suspense>
-                </div>
+                    {results.length > 0 && (
+                        <div className="flex-1 overflow-y-auto w-full pb-[env(safe-area-inset-bottom)] scrollbar-hide border-t border-white/5">
+                        <Suspense fallback={null}>
+                            <LazyRouteResults
+                            results={results}
+                            selectedCriteria={selectedCriteria}
+                            selectedPath={selectedPath}
+                            onSelect={(path: PathResult) => {
+                                setSelectedPath(path);
+                                setIsMinimized(true);
+                            }}
+                            onBusClick={handleBusClick}
+                            />
+                        </Suspense>
+                        </div>
+                    )}
+                  </>
               )}
             </div>
 

@@ -10,6 +10,7 @@ interface MapProps {
     recenterCount?: number;
     onStopSelect?: (stop: Stop) => void;
     center?: { lat: number; lng: number };
+    onMapInteract?: () => void;
 }
 
 export function Map(
@@ -21,6 +22,7 @@ export function Map(
         onStopSelect,
         center = { lat: 12.9716, lng: 77.5946 },
         recenterCount,
+        onMapInteract,
     }: MapProps,
 ) {
     const mapRef = useRef<HTMLDivElement>(null);
@@ -169,6 +171,18 @@ export function Map(
         markers.current = [];
         polylines.current = [];
     };
+
+    useEffect(() => {
+        if (!googleMap.current || !mapInitialized) return;
+        
+        const clickL = googleMap.current.addListener("click", () => onMapInteract?.());
+        const dragL = googleMap.current.addListener("dragstart", () => onMapInteract?.());
+        
+        return () => {
+            google.maps.event.removeListener(clickL);
+            google.maps.event.removeListener(dragL);
+        }
+    }, [mapInitialized, onMapInteract]);
 
     useEffect(() => {
         if (!googleMap.current || !mapInitialized) return;

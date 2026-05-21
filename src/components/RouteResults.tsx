@@ -5,11 +5,12 @@ import { formatSecondsAsTime } from "../utils/geo";
 interface RouteResultsProps {
     results: PathResult[];
     selectedCriteria: "FASTEST" | "MIN_FARE" | "MIN_INTERCHANGES";
+    selectedPath?: PathResult | null;
     onSelect: (path: PathResult) => void;
     onBusClick: (busNumber: string) => void;
 }
 
-export function RouteResults({ results, selectedCriteria, onSelect, onBusClick }: RouteResultsProps) {
+export function RouteResults({ results, selectedCriteria, selectedPath, onSelect, onBusClick }: RouteResultsProps) {
     const [expandedPathIdx, setExpandedPathIdx] = useState<number | null>(null);
 
     const sortedResults = useMemo(() => {
@@ -28,6 +29,7 @@ export function RouteResults({ results, selectedCriteria, onSelect, onBusClick }
             <div className="flex flex-col md:flex-row gap-4 overflow-y-auto md:overflow-x-auto pb-4 scrollbar-hide -webkit-overflow-scrolling-touch">
                 {sortedResults.map((result, idx) => {
                     const isExpanded = expandedPathIdx === idx;
+                    const isSelected = selectedPath === result;
                     return (
                     <div
                         key={idx}
@@ -35,7 +37,11 @@ export function RouteResults({ results, selectedCriteria, onSelect, onBusClick }
                             onSelect(result);
                             setExpandedPathIdx(isExpanded ? null : idx);
                         }}
-                        className={`w-full md:min-w-[300px] bg-white/5 p-4 rounded-2xl border ${isExpanded ? 'border-purple-500' : 'border-white/10'} shadow-lg cursor-pointer transition-all active:scale-[0.98]`}
+                        className={`w-full md:min-w-[300px] p-4 rounded-2xl border-l-4 shadow-lg cursor-pointer transition-all active:scale-[0.98] ${
+                            isSelected 
+                                ? 'bg-[#1a1a1a] border-l-purple-500 border-y-white/10 border-r-white/10 opacity-100' 
+                                : 'bg-white/5 border-l-transparent border-y-white/10 border-r-white/10 opacity-60 grayscale hover:grayscale-0 hover:opacity-100'
+                        }`}
                     >
                         <div className="flex justify-between items-center mb-3">
                             <span className="text-purple-400 font-bold text-sm">
@@ -47,8 +53,9 @@ export function RouteResults({ results, selectedCriteria, onSelect, onBusClick }
                         </div>
 
                         <div className="flex items-center gap-3 text-sm text-gray-300 font-medium mb-2">
-                            <span className="flex items-center gap-1 text-white text-xl font-bold">
-                                ⚡ {Math.round(result.totalTime / 60)}<span className="text-sm font-normal text-gray-400">min</span>
+                            <span className="flex items-center gap-1 text-white flex-nowrap">
+                                ⚡ <span className="text-[32px] font-bold leading-none">{Math.round(result.totalTime / 60)}</span>
+                                <span className="text-[16px] font-normal text-gray-400 self-end mb-[2px]">min</span>
                             </span>
                             <span>•</span>
                             <span>💰 ₹{result.totalFare}</span>
