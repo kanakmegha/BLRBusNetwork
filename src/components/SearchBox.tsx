@@ -123,6 +123,8 @@ export function SearchBox(
             const { AutocompleteSessionToken } = await (window as any).google.maps.importLibrary("places");
             sessionToken.current = new AutocompleteSessionToken();
         }
+    };
+
     const handleKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (
             e.key === "Enter" && destinationInput &&
