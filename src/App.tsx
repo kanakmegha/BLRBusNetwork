@@ -220,7 +220,7 @@ function App() {
                 </Suspense>
               )
               : (
-              <div className="absolute inset-0 z-0 pb-[300px] md:pb-0">
+              <div className="absolute inset-0 z-0">
                 <GoogleMap
                   stops={stops}
                   center={mapCenter}
@@ -233,22 +233,22 @@ function App() {
               </div>
               )}
 
-            <div className="absolute bottom-10 left-10 z-[100] flex flex-col gap-3">
+            <div className="absolute bottom-[calc(env(safe-area-inset-bottom)+180px)] md:bottom-10 right-4 md:right-auto md:left-10 z-[100] flex flex-col items-end md:items-start gap-3">
               <button
                 onClick={() => setShowMetroMap(!showMetroMap)}
-                className="bg-[#1e1e1e]/90 backdrop-blur-md px-6 py-4 md:py-3 rounded-full border border-purple-500/50 text-white font-bold text-sm md:text-sm shadow-2xl hover:bg-purple-600 transition-all flex items-center gap-2"
+                className="bg-[#1e1e1e]/90 backdrop-blur-md px-4 py-3 md:px-6 md:py-3 rounded-full border border-purple-500/50 text-white font-bold text-xs md:text-sm shadow-2xl hover:bg-purple-600 transition-all flex items-center gap-2"
               >
                 {showMetroMap
-                  ? "🗺️ Switch to Google Map"
-                  : "🚇 Switch to Schematic View"}
+                  ? "🗺️ Map"
+                  : "🚇 Schematic"}
               </button>
 
               {selectedPath && !showMetroMap && (
                 <button
                   onClick={() => setRecenterCount(prev => prev + 1)}
-                  className="bg-emerald-500/90 backdrop-blur-md px-6 py-4 md:py-3 rounded-full border border-emerald-400/50 text-white font-bold text-sm md:text-sm shadow-2xl hover:bg-emerald-600 transition-all flex items-center gap-2 animate-in fade-in slide-in-from-bottom-4 duration-500"
+                  className="bg-emerald-500/90 backdrop-blur-md px-4 py-3 md:px-6 md:py-3 rounded-full border border-emerald-400/50 text-white font-bold text-xs md:text-sm shadow-2xl hover:bg-emerald-600 transition-all flex items-center gap-2 animate-in fade-in slide-in-from-bottom-4 duration-500"
                 >
-                  🎯 Center on Route
+                  🎯 Center
                 </button>
               )}
             </div>
@@ -262,27 +262,46 @@ function App() {
               </div>
             )}
 
-             <div className="absolute bottom-0 left-0 w-full md:w-auto md:bottom-auto md:top-8 md:left-8 z-[120]">
-              <SearchBox
-                stops={stops}
-                onSearch={handleSearch}
-                onPlaceSelect={handleDestinationPlaceSelect}
-                onCriteriaChange={handleCriteriaChange}
-                selectedCriteria={selectedCriteria}
-                initialFrom={fromStopId}
-                initialTo={toStopId}
-                destStopName={destStopName}
-              />
-            </div>
+            {/* Bottom Sheet for Mobile / Sidebar for Desktop */}
+            <div className={`
+              absolute bottom-0 left-0 w-full z-[120]
+              md:top-8 md:left-8 md:bottom-auto md:w-[400px]
+              bg-[#1e1e1e]/95 backdrop-blur-xl md:rounded-3xl rounded-t-[32px] 
+              shadow-[0_-20px_50px_rgba(0,0,0,0.5)] md:shadow-[0_20px_50px_rgba(0,0,0,0.5)]
+              flex flex-col transition-all duration-500 ease-in-out
+              ${results.length > 0 ? 'h-[85vh] md:h-auto md:max-h-[calc(100vh-64px)]' : 'h-auto'}
+            `}>
+              {/* Pull handle for mobile */}
+              <div className="w-full flex justify-center pt-3 pb-1 md:hidden shrink-0">
+                 <div className="w-12 h-1.5 bg-white/20 rounded-full" />
+              </div>
 
-            <Suspense fallback={null}>
-              <LazyRouteResults
-                results={results}
-                selectedCriteria={selectedCriteria}
-                onSelect={(path: PathResult) => setSelectedPath(path)}
-                onBusClick={handleBusClick}
-              />
-            </Suspense>
+              <div className="shrink-0 w-full">
+                <SearchBox
+                  stops={stops}
+                  onSearch={handleSearch}
+                  onPlaceSelect={handleDestinationPlaceSelect}
+                  onCriteriaChange={handleCriteriaChange}
+                  selectedCriteria={selectedCriteria}
+                  initialFrom={fromStopId}
+                  initialTo={toStopId}
+                  destStopName={destStopName}
+                />
+              </div>
+
+              {results.length > 0 && (
+                <div className="flex-1 overflow-y-auto w-full pb-[env(safe-area-inset-bottom)] scrollbar-hide border-t border-white/5">
+                  <Suspense fallback={null}>
+                    <LazyRouteResults
+                      results={results}
+                      selectedCriteria={selectedCriteria}
+                      onSelect={(path: PathResult) => setSelectedPath(path)}
+                      onBusClick={handleBusClick}
+                    />
+                  </Suspense>
+                </div>
+              )}
+            </div>
 
             <Suspense fallback={null}>
               {explorerRoute && (

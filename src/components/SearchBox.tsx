@@ -153,7 +153,7 @@ export function SearchBox(
     };
 
     return (
-        <div className="w-full md:w-96 bg-[#1e1e1e]/95 md:bg-[#1e1e1e]/90 backdrop-blur-xl p-6 rounded-t-3xl md:rounded-3xl border-t md:border border-white/10 shadow-[0_-20px_50px_rgba(0,0,0,0.5)] md:shadow-[0_20px_50px_rgba(0,0,0,0.5)] space-y-5">
+        <div className="w-full flex flex-col space-y-4 p-4 md:p-6 pb-2">
             <div className="flex justify-between items-center">
                 <h1 className="text-xl font-black text-white tracking-tight font-['Outfit']">
                     Namma <span className="text-purple-500">Route</span>
@@ -171,7 +171,7 @@ export function SearchBox(
                         <button
                             key={opt.id}
                             onClick={() => onCriteriaChange?.(opt.id as any)}
-                            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all ${
+                            className={`flex-1 flex items-center justify-center gap-1.5 h-11 rounded-xl text-[10px] md:text-xs font-black uppercase tracking-tighter transition-all ${
                                 selectedCriteria === opt.id
                                     ? "bg-purple-600 text-white shadow-lg shadow-purple-500/30 border-purple-400"
                                     : "bg-[#121212] text-gray-400 border border-white/5 hover:border-purple-500/50"
@@ -193,7 +193,7 @@ export function SearchBox(
                 <select
                     value={from}
                     onChange={(e) => setFrom(e.target.value)}
-                    className="w-full bg-[#121212] text-white border border-white/5 rounded-2xl p-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition-all font-medium appearance-none"
+                    className="w-full h-[52px] bg-[#121212] text-white border border-white/5 rounded-2xl px-4 text-[16px] focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition-all font-medium appearance-none"
                 >
                     <option value="" disabled>Detecting location...</option>
                     {stops.map((s) => (
@@ -221,7 +221,7 @@ export function SearchBox(
                         }}
                         onKeyDown={handleKeyDown}
                         placeholder="Search landmark or area..."
-                        className="w-full bg-[#121212] text-white border border-white/5 rounded-2xl p-3.5 pl-10 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition-all font-medium placeholder:text-gray-600"
+                        className="w-full h-[52px] bg-[#121212] text-white border border-white/5 rounded-2xl pl-12 pr-4 text-[16px] focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition-all font-medium placeholder:text-gray-500"
                     />
                     <div className="absolute left-3.5 top-[15px] text-gray-600 group-focus-within:text-purple-500 transition-colors">
                         {isGeocoding
@@ -244,6 +244,20 @@ export function SearchBox(
                                 </svg>
                             )}
                     </div>
+                    {destinationInput && (
+                        <button
+                            onClick={() => {
+                                setDestinationInput("");
+                                setSuggestions([]);
+                                toInputRef.current?.focus();
+                            }}
+                            className="absolute right-3.5 top-[15px] text-gray-500 hover:text-white transition-colors"
+                        >
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    )}
                 </div>
                 {suggestions.length > 0 && (
                     <ul className="absolute z-[200] mt-1 w-full bg-[#1e1e1e]/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl max-h-60 overflow-y-auto divide-y divide-white/5">
@@ -286,7 +300,7 @@ export function SearchBox(
 
             <button
                 onClick={handleSearch}
-                className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold py-4 rounded-2xl transition-all shadow-[0_10px_20px_rgba(124,58,237,0.3)] active:scale-[0.98] text-sm tracking-wide"
+                className="w-full h-[56px] bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold rounded-2xl transition-all shadow-[0_10px_20px_rgba(124,58,237,0.3)] active:scale-[0.98] text-[18px] tracking-wide mt-2"
             >
                 Find Optimal Path
             </button>

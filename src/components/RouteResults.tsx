@@ -22,13 +22,13 @@ export function RouteResults({ results, selectedCriteria, onSelect, onBusClick }
     if (results.length === 0) return null;
 
     return (
-        <div className="absolute bottom-6 left-6 right-6 z-[100] flex flex-col gap-4">
-            <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
+        <div className="flex flex-col gap-4 p-4 md:p-0">
+            <div className="flex flex-col md:flex-row gap-4 overflow-y-auto md:overflow-x-auto pb-4 scrollbar-hide -webkit-overflow-scrolling-touch">
                 {sortedResults.map((result, idx) => (
                     <div
                         key={idx}
                         onClick={() => onSelect(result)}
-                        className="min-w-[300px] bg-[#1e1e1e]/90 backdrop-blur-md p-5 rounded-2xl border border-[#333] shadow-2xl cursor-pointer hover:border-purple-500 transition-all hover:-translate-y-1 active:scale-95"
+                        className="w-full md:min-w-[300px] bg-white/5 p-4 rounded-2xl border border-white/10 shadow-lg cursor-pointer hover:border-purple-500 transition-all active:scale-[0.98]"
                     >
                         <div className="flex justify-between items-center mb-3">
                             <span className="text-purple-400 font-bold text-sm">
