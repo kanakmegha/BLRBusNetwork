@@ -1,6 +1,7 @@
-/// <reference types="@types/google.maps" />
 import { useEffect, useRef, useState } from "react";
 import type { Stop } from "../engine/types";
+import { MapService } from "../utils/mapService";
+import type { AutosuggestSuggestion } from "../utils/mapService";
 
 interface SearchBoxProps {
     stops: Stop[];
@@ -34,18 +35,17 @@ export function SearchBox(
     
     const [locState, setLocState] = useState<LocationState>("DETECTING");
     const [originInput, setOriginInput] = useState("");
-    const [originSuggestions, setOriginSuggestions] = useState<any[]>([]);
+    const [originSuggestions, setOriginSuggestions] = useState<AutosuggestSuggestion[]>([]);
     const [isOriginGeocoding, setIsOriginGeocoding] = useState(false);
     
     const [destinationInput, setDestinationInput] = useState("");
-    const [destSuggestions, setDestSuggestions] = useState<any[]>([]);
+    const [destSuggestions, setDestSuggestions] = useState<AutosuggestSuggestion[]>([]);
     const [isDestGeocoding, setIsDestGeocoding] = useState(false);
     
-    const [recentSearches, setRecentSearches] = useState<any[]>([]);
+    const [recentSearches, setRecentSearches] = useState<AutosuggestSuggestion[]>([]);
     
     const toInputRef = useRef<HTMLInputElement>(null);
     const fromInputRef = useRef<HTMLInputElement>(null);
-    const sessionToken = useRef<any>(null);
 
     useEffect(() => {
         if (initialFrom) setFrom(initialFrom);
@@ -113,49 +113,42 @@ export function SearchBox(
         }
     }, []);
 
-    const addRecentSearch = (place: any) => {
+    const addRecentSearch = (place: AutosuggestSuggestion) => {
         setRecentSearches(prev => {
-            const filtered = prev.filter(p => p.place_id !== place.place_id);
+            const filtered = prev.filter(p => p.placeId !== place.placeId);
             const updated = [place, ...filtered].slice(0, 5);
             localStorage.setItem("recentSearches", JSON.stringify(updated));
             return updated;
         });
     };
 
-    const fetchSuggestions = async (val: string, setSugg: any) => {
+    const fetchSuggestions = async (val: string, setSugg: (s: AutosuggestSuggestion[]) => void) => {
         if (!val.trim()) {
             setSugg([]);
             return;
         }
-        if ((window as any).google) {
-            const { AutocompleteSessionToken, AutocompleteSuggestion } = await (window as any).google.maps.importLibrary("places");
-            if (!sessionToken.current) sessionToken.current = new AutocompleteSessionToken();
-            try {
-                const request = {
-                    input: val,
-                    sessionToken: sessionToken.current,
-                    includedRegionCodes: ["IN"],
-                    locationRestriction: {
-                        north: 13.5,
-                        south: 12.5,
-                        east: 78.0,
-                        west: 77.0
-                    }
-                };
-                const { suggestions: apiSuggestions } = await AutocompleteSuggestion.fetchAutocompleteSuggestions(request);
-                const formattedSuggestions = apiSuggestions.map((s: any) => ({
-                    place_id: s.placePrediction.placeId,
-                    description: s.placePrediction.text.text,
-                    structured_formatting: {
-                        main_text: s.placePrediction.text.text,
-                        secondary_text: ""
-                    }
+
+        try {
+            const suggestions = await MapService.autosuggest(val, stops);
+            setSugg(suggestions);
+        } catch (error) {
+            console.error("[SearchBox] Error fetching suggestions:", error);
+            // Pure local search fallback if all service calls fail
+            const normalized = val.toLowerCase().trim();
+            const localFallback = stops
+                .filter(s => s.stop_name.toLowerCase().includes(normalized))
+                .slice(0, 5)
+                .map(s => ({
+                    placeId: s.stop_id,
+                    description: s.stop_name,
+                    mainText: s.stop_name,
+                    secondaryText: s.busNumbers && s.busNumbers.length > 0 
+                        ? `Buses: ${s.busNumbers.slice(0, 3).join(", ")}` 
+                        : (s.line_code ? `${s.line_code} Line Metro` : "Bus Stop"),
+                    isLocalStop: true,
+                    stop: s
                 }));
-                setSugg(formattedSuggestions);
-            } catch (error) {
-                console.error("Error fetching suggestions:", error);
-                setSugg([]);
-            }
+            setSugg(localFallback);
         }
     };
 
@@ -172,36 +165,48 @@ export function SearchBox(
         fetchSuggestions(val, setDestSuggestions);
     };
 
-    const handleSuggestionClick = async (placeId: string, description: string, type: "FROM" | "TO") => {
+    const handleSuggestionClick = async (suggestion: AutosuggestSuggestion, type: "FROM" | "TO") => {
+        const { placeId, description, isLocalStop, stop } = suggestion;
+
         if (type === "FROM") {
             setOriginInput(description);
             setOriginSuggestions([]);
-            setIsOriginGeocoding(true);
             localStorage.setItem("lastOrigin", description);
         } else {
             setDestinationInput(description);
             setDestSuggestions([]);
-            setIsDestGeocoding(true);
         }
 
-        const { Geocoder } = await (window as any).google.maps.importLibrary("geocoding");
-        const geocoder = new Geocoder();
-        geocoder.geocode({ placeId }, (results: any, status: any) => {
-            if (type === "FROM") setIsOriginGeocoding(false);
-            else setIsDestGeocoding(false);
-            
-            if (status === "OK" && results[0] && onPlaceSelect) {
-                const loc = results[0].geometry.location;
-                onPlaceSelect(loc.lat(), loc.lng(), type);
+        if (isLocalStop && stop) {
+            // Immediate local stop select
+            if (type === "FROM") {
+                setFrom(stop.stop_id);
+            } else {
+                setTo(stop.stop_id);
+            }
+            onPlaceSelect?.(stop.stop_lat, stop.stop_lon, type);
+            if (type === "TO") {
+                addRecentSearch(suggestion);
+            }
+            return;
+        }
+
+        if (type === "FROM") setIsOriginGeocoding(true);
+        else setIsDestGeocoding(true);
+
+        try {
+            const coords = await MapService.geocode(placeId, description);
+            if (coords && onPlaceSelect) {
+                onPlaceSelect(coords.lat, coords.lng, type);
                 if (type === "TO") {
-                    addRecentSearch({ place_id: placeId, description, structured_formatting: { main_text: description, secondary_text: "" } });
+                    addRecentSearch(suggestion);
                 }
             }
-        });
-        
-        if ((window as any).google) {
-            const { AutocompleteSessionToken } = await (window as any).google.maps.importLibrary("places");
-            sessionToken.current = new AutocompleteSessionToken();
+        } catch (e) {
+            console.error("[SearchBox] Geocoding failed:", e);
+        } finally {
+            if (type === "FROM") setIsOriginGeocoding(false);
+            else setIsDestGeocoding(false);
         }
     };
 
@@ -210,7 +215,6 @@ export function SearchBox(
             alert("Please enter both origin and destination to continue");
             return;
         }
-        // Use from/to which are updated by onPlaceSelect
         if (from && to) {
             onSearch(from, to);
         } else {
@@ -308,19 +312,19 @@ export function SearchBox(
                         <ul className="absolute z-[220] mt-1 w-full bg-[#1e1e1e]/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl max-h-60 overflow-y-auto divide-y divide-white/5">
                             {originSuggestions.map((s) => (
                                 <li
-                                    key={s.place_id}
-                                    onClick={() => handleSuggestionClick(s.place_id, s.description, "FROM")}
+                                    key={s.placeId}
+                                    onClick={() => handleSuggestionClick(s, "FROM")}
                                     className="px-4 py-3 hover:bg-white/10 cursor-pointer transition-colors"
                                 >
                                     <div className="flex items-start gap-3">
-                                        <span className="mt-0.5 text-gray-400">📍</span>
+                                        <span className="mt-0.5 text-gray-400">{s.isLocalStop ? "🚌" : "📍"}</span>
                                         <div className="flex flex-col">
                                             <span className="text-sm text-white font-medium truncate">
-                                                {s.structured_formatting?.main_text || s.description}
+                                                {s.mainText}
                                             </span>
-                                            {s.structured_formatting?.secondary_text && (
-                                                <span className="text-[10px] text-gray-500 truncate">
-                                                    {s.structured_formatting.secondary_text}
+                                            {s.secondaryText && (
+                                                <span className="text-[10px] text-gray-400 truncate">
+                                                    {s.secondaryText}
                                                 </span>
                                             )}
                                         </div>
@@ -401,21 +405,21 @@ export function SearchBox(
                         <ul className="absolute z-[200] mt-1 w-full bg-[#1e1e1e]/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl max-h-60 overflow-y-auto divide-y divide-white/5">
                             {destSuggestions.map((s) => (
                                 <li
-                                    key={s.place_id}
-                                    onClick={() => handleSuggestionClick(s.place_id, s.description, "TO")}
+                                    key={s.placeId}
+                                    onClick={() => handleSuggestionClick(s, "TO")}
                                     className="px-4 py-3 hover:bg-white/10 cursor-pointer transition-colors"
                                 >
                                     <div className="flex items-start gap-3">
                                         <span className="mt-0.5 text-gray-400">
-                                            {!destinationInput.trim() ? "🕒" : "📍"}
+                                            {s.isLocalStop ? "🚌" : (!destinationInput.trim() ? "🕒" : "📍")}
                                         </span>
                                         <div className="flex flex-col">
                                             <span className="text-sm text-white font-medium truncate">
-                                                {s.structured_formatting?.main_text || s.description}
+                                                {s.mainText}
                                             </span>
-                                            {s.structured_formatting?.secondary_text && (
-                                                <span className="text-[10px] text-gray-500 truncate">
-                                                    {s.structured_formatting.secondary_text}
+                                            {s.secondaryText && (
+                                                <span className="text-[10px] text-gray-400 truncate">
+                                                    {s.secondaryText}
                                                 </span>
                                             )}
                                         </div>
