@@ -3,6 +3,7 @@ import { Map as GoogleMap } from "./components/Map";
 import { SearchBox } from "./components/SearchBox";
 import { useTransit } from "./hooks/useTransit";
 import { Suspense, lazy } from "react";
+import { Analytics } from "@vercel/analytics/react";
 
 const LazyRouteResults = lazy(() => import("./components/RouteResults").then(m => ({ default: m.RouteResults })));
 const LazyRouteExplorer = lazy(() => import("./components/RouteExplorer").then(m => ({ default: m.RouteExplorer })));
@@ -386,6 +387,7 @@ function App() {
             </div>
           </>
         )}
+      <Analytics />
     </main>
   );
 }
