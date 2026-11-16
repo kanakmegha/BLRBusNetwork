@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import type { PathResult, Stop } from "../engine/types";
 import { MapService } from "../utils/mapService";
 import type { IMapInstance } from "../utils/mapService";
-import { loadMapProvider } from "../utils/mapLoader";
+import { getPreferredProvider, loadMapProvider, onAuthFailure } from "../utils/mapLoader";
+import type { MapProviderType } from "../utils/mapLoader";
 
 interface MapProps {
     stops: Stop[];
@@ -34,42 +35,80 @@ export function Map(
     const [activeProviderName, setActiveProviderName] = useState<string | null>(null);
     const lastBoundsFit = useRef<{ selectedPath: any, recenterCount: number }>({ selectedPath: null, recenterCount: -1 });
 
-    // Initialize Map Provider dynamically
+    // Initialize Map Provider dynamically with unmount cancellation & runtime auth-failure fallback
     useEffect(() => {
+        let isCancelled = false;
+
+        const mapConfig = {
+            center,
+            zoom: 12,
+            minZoom: 10,
+            maxZoom: 18,
+            bounds: {
+                north: 13.3,
+                south: 12.7,
+                east: 77.9,
+                west: 77.3,
+            },
+            mapId: import.meta.env.VITE_GOOGLE_MAP_ID || "DEMO_MAP_ID",
+        };
+
         const initMap = async () => {
             try {
-                if (mapRef.current && !mapInstance.current) {
-                    const preferred = (import.meta.env.VITE_MAP_PROVIDER || "google") as any;
-                    const loadedProvider = await loadMapProvider(preferred);
-                    setActiveProviderName(loadedProvider);
-                    console.log(`[MapComponent] Initializing map with provider: ${loadedProvider}`);
+                if (!mapRef.current || mapInstance.current) return;
+                const preferred = getPreferredProvider();
+                const loadedProvider = await loadMapProvider(preferred);
+                if (isCancelled || !mapRef.current) return;
 
-                    const inst = await MapService.initializeMap(mapRef.current, {
-                        center,
-                        zoom: 12,
-                        minZoom: 10,
-                        maxZoom: 18,
-                        bounds: {
-                            north: 13.3,
-                            south: 12.7,
-                            east: 77.9,
-                            west: 77.3,
-                        },
-                        mapId: import.meta.env.VITE_GOOGLE_MAP_ID || "DEMO_MAP_ID",
-                    });
+                setActiveProviderName(loadedProvider);
+                console.log(`[MapComponent] Initializing map with provider: ${loadedProvider}`);
 
-                    mapInstance.current = inst;
-                    setMapInitialized(true);
+                const inst = await MapService.initializeMap(mapRef.current, mapConfig);
+                if (isCancelled) {
+                    await MapService.destroyMap();
+                    return;
                 }
+
+                mapInstance.current = inst;
+                setMapInitialized(true);
             } catch (err: any) {
-                console.error("[MapComponent] Failed to initialize map:", err);
-                setMapError(err.message || String(err));
+                if (!isCancelled) {
+                    console.error("[MapComponent] Failed to initialize map:", err);
+                    setMapError(err.message || String(err));
+                }
             }
         };
+
+        const unsubscribeAuthFailure = onAuthFailure(async (failedProvider: MapProviderType) => {
+            if (isCancelled || !mapRef.current) return;
+            console.warn(`[MapComponent] Runtime auth failure for "${failedProvider}". Falling back to next provider.`);
+            try {
+                mapInstance.current = null;
+                setMapInitialized(false);
+                const nextProvider = await MapService.fallbackFromProvider(failedProvider);
+                if (isCancelled || !mapRef.current) return;
+
+                setActiveProviderName(nextProvider);
+                const inst = await MapService.initializeMap(mapRef.current, mapConfig);
+                if (isCancelled) {
+                    await MapService.destroyMap();
+                    return;
+                }
+                mapInstance.current = inst;
+                setMapInitialized(true);
+            } catch (err: any) {
+                if (!isCancelled) {
+                    console.error("[MapComponent] Fallback initialization failed:", err);
+                    setMapError(err.message || String(err));
+                }
+            }
+        });
 
         initMap();
 
         return () => {
+            isCancelled = true;
+            unsubscribeAuthFailure();
             if (mapInstance.current) {
                 console.log("[MapComponent] Destroying map instance");
                 MapService.destroyMap();
@@ -86,11 +125,15 @@ export function Map(
         }
     }, [center, mapInitialized]);
 
-    // Recenter map trigger
+    const lastRecenterCount = useRef(0);
+
+    // Recenter map trigger (only when recenterCount actually increments)
     useEffect(() => {
         const inst = mapInstance.current;
         if (!inst || !mapInitialized) return;
-        
+        if (!recenterCount || recenterCount === lastRecenterCount.current) return;
+        lastRecenterCount.current = recenterCount;
+
         if (selectedPath || allPaths.length > 0 || (explorerPath && explorerPath.length > 0)) {
             // Recenter bounds logic will run on the other effect
         } else {
@@ -119,44 +162,21 @@ export function Map(
         const inst = mapInstance.current;
         if (!inst || !mapInitialized) return;
 
-        const SEGMENT_COLORS = [
-            "#FF007F", // Neon Pink
-            "#00E5FF", // Cyan
-            "#70FF00", // Lime
-            "#FFD700", // Gold
-            "#BF00FF", // Purple
-            "#FF5F1F", // Blaze Orange
-        ];
+        const PRIMARY_ROUTE_COLOR = "#8B5CF6"; // Brand Purple
+        const PRIMARY_CASING_COLOR = "#1E1B4B"; // Subtle dark indigo casing
+        const ALT_ROUTE_COLOR = "#64748B"; // Muted slate for alternative routes
+        const WALKING_COLOR = "#94A3B8"; // Restrained slate for walking segments
+        const EXPLORER_COLOR = "#10B981"; // Restrained Emerald
 
-        const PATH_COLORS = [
-            "#8B5CF6", // Purple
-            "#F97316", // Orange
-            "#3B82F6", // Blue
-        ];
-
-        const EXPLORER_COLOR = "#22c55e"; // Neon Green
-
-        const renderPath = (path: PathResult, pathIdx: number, isSelected: boolean, isMuted: boolean = false) => {
+        const renderPath = (path: PathResult, _pathIdx: number, isSelected: boolean, isMuted: boolean = false) => {
             const pathCoordsForBounds: { lat: number; lng: number }[] = [];
-            let lastColorIdx = -1;
-            
+
             path.segments.forEach((seg, sIdx) => {
                 const isWalking = seg.routeId === "WALKING";
-                
-                let colorIdx = sIdx % SEGMENT_COLORS.length;
-                const isWarm = (idx: number) => [0, 3, 5].includes(idx);
-                
-                if (sIdx > 0 && !isWalking && lastColorIdx !== -1) {
-                    if (isWarm(colorIdx) === isWarm(lastColorIdx)) {
-                        colorIdx = (colorIdx + 1) % SEGMENT_COLORS.length;
-                    }
-                }
-                if (!isWalking) lastColorIdx = colorIdx;
 
-                let strokeColor = isWalking ? "#ffffff" : SEGMENT_COLORS[colorIdx];
-                if (allPaths.length > 1 && !isSelected) {
-                    strokeColor = isWalking ? "#ffffff" : PATH_COLORS[pathIdx % PATH_COLORS.length];
-                }
+                const strokeColor = isWalking
+                    ? WALKING_COLOR
+                    : (isSelected ? PRIMARY_ROUTE_COLOR : ALT_ROUTE_COLOR);
 
                 const pathCoords = seg.stops && seg.stops.length > 0
                     ? seg.stops.map((s) => ({ lat: s.stop_lat, lng: s.stop_lon }))
@@ -168,36 +188,39 @@ export function Map(
                     }
                 });
 
-                // Segment Outlining
+                // Subtle darker casing beneath primary transit segments (8.5px)
                 if (!isWalking && isSelected && !isMuted) {
                     inst.addPolyline({
                         path: pathCoords,
-                        strokeColor: "#000000",
-                        strokeWeight: 14,
-                        strokeOpacity: 0.8,
+                        strokeColor: PRIMARY_CASING_COLOR,
+                        strokeWeight: 9,
+                        strokeOpacity: 0.75,
                         zIndex: 140,
                     });
                 }
 
                 inst.addPolyline({
                     path: pathCoords,
-                    strokeColor: isWalking ? "#888888" : strokeColor,
-                    strokeWeight: isSelected ? 8 : 4,
-                    strokeOpacity: isWalking ? 0.5 : (isMuted ? 0.1 : (isSelected ? 1.0 : 0.4)),
+                    strokeColor,
+                    strokeWeight: isWalking ? (isSelected ? 3.5 : 2.5) : (isSelected ? 5.5 : 3.5),
+                    strokeOpacity: isWalking
+                        ? (isMuted ? 0.15 : (isSelected ? 0.8 : 0.25))
+                        : (isMuted ? 0.12 : (isSelected ? 0.95 : 0.35)),
                     zIndex: isSelected ? 150 : 100,
                     dashed: isWalking,
                 });
 
-                // Transfer Joint Nodes
+                // Transfer Joint Nodes (distinct white circle with dark purple border)
                 if (isSelected && sIdx < path.segments.length - 1 && !isMuted) {
                     const el = document.createElement("div");
-                    el.style.width = "14px";
-                    el.style.height = "14px";
-                    el.style.backgroundColor = "#ffffff";
-                    el.style.border = "4px solid #000000";
+                    el.style.width = "12px";
+                    el.style.height = "12px";
+                    el.style.backgroundColor = "#FFFFFF";
+                    el.style.border = "2.5px solid #4C1D95";
                     el.style.borderRadius = "50%";
                     el.style.boxSizing = "border-box";
-                    
+                    el.style.boxShadow = "0 1px 4px rgba(0,0,0,0.6)";
+
                     inst.addMarker({
                         position: { lat: seg.toStopLat, lng: seg.toStopLon },
                         html: el,
@@ -206,14 +229,14 @@ export function Map(
                     });
                 }
 
-                // Markers for internal stops (only if selected)
-                if (isSelected && seg.stops && !isMuted) {
-                   seg.stops.forEach((stop) => {
+                // Subtle dots for intermediate stops along the selected route
+                if (isSelected && seg.stops && !isMuted && !isWalking) {
+                    seg.stops.forEach((stop) => {
                         const el = document.createElement("div");
-                        el.style.width = "10px";
-                        el.style.height = "10px";
-                        el.style.backgroundColor = strokeColor;
-                        el.style.border = "2px solid #000000";
+                        el.style.width = "7px";
+                        el.style.height = "7px";
+                        el.style.backgroundColor = "#DDD6FE";
+                        el.style.border = "1.5px solid #1E1B4B";
                         el.style.borderRadius = "50%";
                         el.style.boxSizing = "border-box";
 
@@ -258,9 +281,17 @@ export function Map(
 
                     inst.addPolyline({
                         path: pathCoords,
+                        strokeColor: "#064E3B",
+                        strokeWeight: 9,
+                        strokeOpacity: 0.75,
+                        zIndex: 990,
+                    });
+
+                    inst.addPolyline({
+                        path: pathCoords,
                         strokeColor: EXPLORER_COLOR,
-                        strokeWeight: 10,
-                        strokeOpacity: 0.9,
+                        strokeWeight: 5.5,
+                        strokeOpacity: 0.95,
                         zIndex: 1000,
                     });
 
@@ -303,12 +334,13 @@ export function Map(
                             
                             if (firstSeg.fromStopLat && firstSeg.fromStopLon) {
                                 const originEl = document.createElement("div");
-                                originEl.style.width = "18px";
-                                originEl.style.height = "18px";
-                                originEl.style.backgroundColor = "#3B82F6";
-                                originEl.style.border = "3px solid #ffffff";
+                                originEl.style.width = "14px";
+                                originEl.style.height = "14px";
+                                originEl.style.backgroundColor = "#10B981";
+                                originEl.style.border = "2.5px solid #FFFFFF";
                                 originEl.style.borderRadius = "50%";
-                                originEl.style.boxShadow = "0 0 10px rgba(59,130,246,0.8)";
+                                originEl.style.boxSizing = "border-box";
+                                originEl.style.boxShadow = "0 1px 6px rgba(0,0,0,0.6)";
                                 
                                 inst.addMarker({
                                     position: { lat: firstSeg.fromStopLat, lng: firstSeg.fromStopLon },
@@ -320,12 +352,13 @@ export function Map(
 
                             if (lastSeg.toStopLat && lastSeg.toStopLon) {
                                 const destEl = document.createElement("div");
-                                destEl.style.width = "18px";
-                                destEl.style.height = "18px";
-                                destEl.style.backgroundColor = "#A855F7";
-                                destEl.style.border = "3px solid #ffffff";
+                                destEl.style.width = "14px";
+                                destEl.style.height = "14px";
+                                destEl.style.backgroundColor = "#F43F5E";
+                                destEl.style.border = "2.5px solid #FFFFFF";
                                 destEl.style.borderRadius = "50%";
-                                destEl.style.boxShadow = "0 0 10px rgba(168,85,247,0.8)";
+                                destEl.style.boxSizing = "border-box";
+                                destEl.style.boxShadow = "0 1px 6px rgba(0,0,0,0.6)";
                                 
                                 inst.addMarker({
                                     position: { lat: lastSeg.toStopLat, lng: lastSeg.toStopLon },

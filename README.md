@@ -21,8 +21,8 @@ Namma Route is a high-performance transit routing engine designed to solve the c
 
 ## 🛠️ Technical Stack
 
-- **Frontend**: React 18, Vite, Tailwind CSS
-- **Mapping**: Google Maps JavaScript API (Custom Dark Mode)
+- **Frontend**: React 19, Vite, Tailwind CSS
+- **Mapping**: Leaflet + CARTO Dark Matter (default, zero-key base map) with optional Google Maps & Mappls providers
 - **Engine**: TypeScript-based RAPTOR implementation for O(N) pathfinding.
 - **Data**: GTFS-derived JSON structures with spatial indexing for nearby stop discovery.
 - **UI Components**: Radix UI for accessible popovers and radix-inspired design tokens.
@@ -52,9 +52,12 @@ Namma Route is a high-performance transit routing engine designed to solve the c
    ```
 
 3. **Set up Environment Variables**:
-   Create a `.env` file in the root:
+   Copy `.env.example` to `.env`:
    ```env
-   VITE_GOOGLE_MAPS_API_KEY=your_api_key_here
+   VITE_MAP_PROVIDER=leaflet
+   # Optional:
+   # VITE_GOOGLE_MAPS_API_KEY=your_api_key_here
+   # VITE_MAPMYINDIA_API_KEY=your_mappls_key_here
    ```
 
 4. **Run the development server**:

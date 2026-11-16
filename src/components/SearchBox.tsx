@@ -7,6 +7,7 @@ interface SearchBoxProps {
     stops: Stop[];
     onSearch: (from: string, to: string) => void;
     onPlaceSelect?: (lat: number, lng: number, type: "FROM" | "TO") => void;
+    onClearSelection?: (type: "FROM" | "TO") => void;
     onCriteriaChange?: (option: "FASTEST" | "MIN_FARE" | "MIN_INTERCHANGES") => void;
     selectedCriteria?: "FASTEST" | "MIN_FARE" | "MIN_INTERCHANGES";
     initialFrom?: string;
@@ -22,6 +23,7 @@ export function SearchBox(
         stops,
         onSearch,
         onPlaceSelect,
+        onClearSelection,
         onCriteriaChange,
         selectedCriteria = "FASTEST",
         initialFrom,
@@ -37,22 +39,31 @@ export function SearchBox(
     const [originInput, setOriginInput] = useState("");
     const [originSuggestions, setOriginSuggestions] = useState<AutosuggestSuggestion[]>([]);
     const [isOriginGeocoding, setIsOriginGeocoding] = useState(false);
+    const [isOriginSearching, setIsOriginSearching] = useState(false);
+    const [originNoResults, setOriginNoResults] = useState(false);
+    const [originValidationError, setOriginValidationError] = useState<string | null>(null);
     
     const [destinationInput, setDestinationInput] = useState("");
     const [destSuggestions, setDestSuggestions] = useState<AutosuggestSuggestion[]>([]);
     const [isDestGeocoding, setIsDestGeocoding] = useState(false);
+    const [isDestSearching, setIsDestSearching] = useState(false);
+    const [destNoResults, setDestNoResults] = useState(false);
+    const [destValidationError, setDestValidationError] = useState<string | null>(null);
     
     const [recentSearches, setRecentSearches] = useState<AutosuggestSuggestion[]>([]);
+    const [remoteSearchWarning, setRemoteSearchWarning] = useState<string | null>(null);
     
     const toInputRef = useRef<HTMLInputElement>(null);
     const fromInputRef = useRef<HTMLInputElement>(null);
+    const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const searchRequestIdRef = useRef(0);
 
     useEffect(() => {
-        if (initialFrom) setFrom(initialFrom);
+        setFrom(initialFrom || "");
     }, [initialFrom]);
 
     useEffect(() => {
-        if (initialTo) setTo(initialTo);
+        setTo(initialTo || "");
     }, [initialTo]);
 
     useEffect(() => {
@@ -122,47 +133,86 @@ export function SearchBox(
         });
     };
 
-    const fetchSuggestions = async (val: string, setSugg: (s: AutosuggestSuggestion[]) => void) => {
+    useEffect(() => {
+        return () => {
+            if (searchDebounceRef.current) {
+                clearTimeout(searchDebounceRef.current);
+            }
+        };
+    }, []);
+
+    const fetchSuggestions = (
+        val: string,
+        setSugg: (s: AutosuggestSuggestion[]) => void,
+        setSearching: (b: boolean) => void,
+        setNoResults: (b: boolean) => void
+    ) => {
+        if (searchDebounceRef.current) {
+            clearTimeout(searchDebounceRef.current);
+        }
+
         if (!val.trim()) {
             setSugg([]);
+            setSearching(false);
+            setNoResults(false);
+            setRemoteSearchWarning(null);
             return;
         }
 
-        try {
-            const suggestions = await MapService.autosuggest(val, stops);
-            setSugg(suggestions);
-        } catch (error) {
-            console.error("[SearchBox] Error fetching suggestions:", error);
-            // Pure local search fallback if all service calls fail
-            const normalized = val.toLowerCase().trim();
-            const localFallback = stops
-                .filter(s => s.stop_name.toLowerCase().includes(normalized))
-                .slice(0, 5)
-                .map(s => ({
-                    placeId: s.stop_id,
-                    description: s.stop_name,
-                    mainText: s.stop_name,
-                    secondaryText: s.busNumbers && s.busNumbers.length > 0 
-                        ? `Buses: ${s.busNumbers.slice(0, 3).join(", ")}` 
-                        : (s.line_code ? `${s.line_code} Line Metro` : "Bus Stop"),
-                    isLocalStop: true,
-                    stop: s
-                }));
-            setSugg(localFallback);
+        // Immediately show local BMTC/Metro stop matches without waiting for remote geocoder
+        const localMatches = MapService.getLocalStopSuggestions(val, stops);
+        setSugg(localMatches);
+        setNoResults(false);
+        setRemoteSearchWarning(null);
+
+        if (val.trim().length < 2) {
+            setSearching(false);
+            setNoResults(localMatches.length === 0);
+            return;
         }
+
+        setSearching(true);
+        const requestId = ++searchRequestIdRef.current;
+        searchDebounceRef.current = setTimeout(async () => {
+            try {
+                const { suggestions, remoteError } = await MapService.autosuggestWithStatus(val, stops);
+                if (requestId !== searchRequestIdRef.current) return;
+                setSugg(suggestions);
+                setNoResults(suggestions.length === 0);
+                setRemoteSearchWarning(
+                    remoteError ? "Remote place search unavailable — showing local bus & metro stops." : null
+                );
+            } catch (error) {
+                if (requestId !== searchRequestIdRef.current) return;
+                console.error("[SearchBox] Error fetching suggestions:", error);
+                setSugg(localMatches);
+                setNoResults(localMatches.length === 0);
+                setRemoteSearchWarning("Remote place search unavailable — showing local bus & metro stops.");
+            } finally {
+                if (requestId === searchRequestIdRef.current) {
+                    setSearching(false);
+                }
+            }
+        }, 400);
     };
 
-    const handleOriginChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleOriginChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const val = e.target.value;
         setOriginInput(val);
+        setFrom("");
+        setOriginValidationError(null);
+        onClearSelection?.("FROM");
         if (locState !== "MANUAL") setLocState("MANUAL");
-        fetchSuggestions(val, setOriginSuggestions);
+        fetchSuggestions(val, setOriginSuggestions, setIsOriginSearching, setOriginNoResults);
     };
 
-    const handleDestinationChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleDestinationChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const val = e.target.value;
         setDestinationInput(val);
-        fetchSuggestions(val, setDestSuggestions);
+        setTo("");
+        setDestValidationError(null);
+        onClearSelection?.("TO");
+        fetchSuggestions(val, setDestSuggestions, setIsDestSearching, setDestNoResults);
     };
 
     const handleSuggestionClick = async (suggestion: AutosuggestSuggestion, type: "FROM" | "TO") => {
@@ -171,14 +221,19 @@ export function SearchBox(
         if (type === "FROM") {
             setOriginInput(description);
             setOriginSuggestions([]);
+            setOriginNoResults(false);
+            setIsOriginSearching(false);
+            setOriginValidationError(null);
             localStorage.setItem("lastOrigin", description);
         } else {
             setDestinationInput(description);
             setDestSuggestions([]);
+            setDestNoResults(false);
+            setIsDestSearching(false);
+            setDestValidationError(null);
         }
 
         if (isLocalStop && stop) {
-            // Immediate local stop select
             if (type === "FROM") {
                 setFrom(stop.stop_id);
             } else {
@@ -201,9 +256,16 @@ export function SearchBox(
                 if (type === "TO") {
                     addRecentSearch(suggestion);
                 }
+            } else {
+                const msg = "Could not resolve coordinates for this place. Please choose another suggestion.";
+                if (type === "FROM") setOriginValidationError(msg);
+                else setDestValidationError(msg);
             }
         } catch (e) {
             console.error("[SearchBox] Geocoding failed:", e);
+            const msg = "Failed to resolve location coordinates. Please try another suggestion.";
+            if (type === "FROM") setOriginValidationError(msg);
+            else setDestValidationError(msg);
         } finally {
             if (type === "FROM") setIsOriginGeocoding(false);
             else setIsDestGeocoding(false);
@@ -211,15 +273,20 @@ export function SearchBox(
     };
 
     const handleSearch = () => {
-        if (!originInput || !destinationInput) {
-            alert("Please enter both origin and destination to continue");
-            return;
+        let valid = true;
+        if (!originInput.trim() || !from) {
+            setOriginValidationError("Please select a valid origin from the suggestions.");
+            if (valid) fromInputRef.current?.focus();
+            valid = false;
         }
-        if (from && to) {
-            onSearch(from, to);
-        } else {
-            alert("Please select a valid location from the suggestions.");
+        if (!destinationInput.trim() || !to) {
+            setDestValidationError("Please select a valid destination from the suggestions.");
+            if (valid) toInputRef.current?.focus();
+            valid = false;
         }
+        if (!valid) return;
+
+        onSearch(from, to);
     };
 
     return (
@@ -261,14 +328,19 @@ export function SearchBox(
                         Location access denied. Type your start point below
                     </div>
                 )}
-                <div className="relative z-[210]">
+                {remoteSearchWarning && (
+                    <div className="text-[10px] text-amber-400 font-medium px-1">
+                        {remoteSearchWarning}
+                    </div>
+                )}
+                <div className="relative z-[240]">
                     <input
                         ref={fromInputRef}
                         type="text"
                         value={locState === "DETECTING" ? "" : originInput}
                         onChange={handleOriginChange}
                         placeholder={locState === "DETECTING" ? "Detecting location..." : "Type origin (e.g. Majestic, Koramangala)"}
-                        className={`w-full h-[48px] bg-[#121212] text-white border border-white/5 rounded-2xl pl-10 pr-12 text-[16px] focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition-all font-medium ${locState === "DETECTING" ? "placeholder:text-blue-400 animate-pulse" : "placeholder:text-gray-500"}`}
+                        className={`w-full h-[48px] bg-[#121212] text-white border rounded-2xl pl-10 pr-12 text-[16px] focus:outline-none focus:ring-2 transition-all font-medium ${originValidationError ? "border-red-500/70 focus:ring-red-500/50" : "border-white/5 focus:ring-purple-500/50"} ${locState === "DETECTING" ? "placeholder:text-blue-400 animate-pulse" : "placeholder:text-gray-500"}`}
                     />
                     <div className="absolute left-3.5 top-[15px] text-gray-600 group-focus-within:text-purple-500 transition-colors">
                         {locState === "DETECTING" || isOriginGeocoding
@@ -295,9 +367,15 @@ export function SearchBox(
                     )}
                     {locState === "MANUAL" && originInput && (
                         <button
+                            aria-label="Clear origin"
                             onClick={() => {
                                 setOriginInput("");
+                                setFrom("");
                                 setOriginSuggestions([]);
+                                setOriginNoResults(false);
+                                setIsOriginSearching(false);
+                                setOriginValidationError(null);
+                                onClearSelection?.("FROM");
                                 localStorage.removeItem("lastOrigin");
                                 fromInputRef.current?.focus();
                             }}
@@ -308,8 +386,8 @@ export function SearchBox(
                             </svg>
                         </button>
                     )}
-                    {originSuggestions.length > 0 && (
-                        <ul className="absolute z-[220] mt-1 w-full bg-[#1e1e1e]/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl max-h-60 overflow-y-auto divide-y divide-white/5">
+                    {(originSuggestions.length > 0 || isOriginSearching || originNoResults) && (
+                        <ul className="absolute z-[250] mt-1 w-full bg-[#1e1e1e]/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl max-h-56 overflow-y-auto divide-y divide-white/5">
                             {originSuggestions.map((s) => (
                                 <li
                                     key={s.placeId}
@@ -318,7 +396,7 @@ export function SearchBox(
                                 >
                                     <div className="flex items-start gap-3">
                                         <span className="mt-0.5 text-gray-400">{s.isLocalStop ? "🚌" : "📍"}</span>
-                                        <div className="flex flex-col">
+                                        <div className="flex flex-col min-w-0">
                                             <span className="text-sm text-white font-medium truncate">
                                                 {s.mainText}
                                             </span>
@@ -331,9 +409,25 @@ export function SearchBox(
                                     </div>
                                 </li>
                             ))}
+                            {isOriginSearching && (
+                                <li className="px-4 py-2.5 text-xs text-gray-400 flex items-center gap-2">
+                                    <div className="w-3 h-3 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                                    <span>Searching places...</span>
+                                </li>
+                            )}
+                            {!isOriginSearching && originNoResults && originSuggestions.length === 0 && (
+                                <li className="px-4 py-3 text-xs text-gray-400">
+                                    No matching stops or places found for &ldquo;{originInput.trim()}&rdquo;.
+                                </li>
+                            )}
                         </ul>
                     )}
                 </div>
+                {originValidationError && (
+                    <div role="alert" className="text-[11px] text-red-400 font-medium px-1">
+                        {originValidationError}
+                    </div>
+                )}
                 {locState === "MANUAL" && !originInput && (
                     <button onClick={startGPS} className="text-[10px] text-blue-400 font-bold ml-1 mt-1 flex items-center gap-1">
                         🎯 Use my location
@@ -352,7 +446,7 @@ export function SearchBox(
             </div>
 
             <div className="space-y-1">
-                <div className="relative group z-[200]">
+                <div className="relative group z-[230]">
                     <input
                         ref={toInputRef}
                         type="text"
@@ -364,7 +458,7 @@ export function SearchBox(
                             }
                         }}
                         placeholder="Search destination..."
-                        className="w-full h-[48px] bg-[#121212] text-white border border-white/5 rounded-2xl pl-10 pr-12 text-[16px] focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition-all font-medium placeholder:text-gray-500"
+                        className={`w-full h-[48px] bg-[#121212] text-white border rounded-2xl pl-10 pr-12 text-[16px] focus:outline-none focus:ring-2 transition-all font-medium placeholder:text-gray-500 ${destValidationError ? "border-red-500/70 focus:ring-red-500/50" : "border-white/5 focus:ring-purple-500/50"}`}
                     />
                     <div className="absolute left-3.5 top-[15px] text-gray-600 group-focus-within:text-purple-500 transition-colors">
                         {isDestGeocoding
@@ -389,9 +483,15 @@ export function SearchBox(
                     </div>
                     {destinationInput && (
                         <button
+                            aria-label="Clear destination"
                             onClick={() => {
                                 setDestinationInput("");
+                                setTo("");
                                 setDestSuggestions([]);
+                                setDestNoResults(false);
+                                setIsDestSearching(false);
+                                setDestValidationError(null);
+                                onClearSelection?.("TO");
                                 toInputRef.current?.focus();
                             }}
                             className="absolute right-3 top-[14px] text-gray-500 hover:text-white transition-colors"
@@ -401,8 +501,8 @@ export function SearchBox(
                             </svg>
                         </button>
                     )}
-                    {destSuggestions.length > 0 && (
-                        <ul className="absolute z-[200] mt-1 w-full bg-[#1e1e1e]/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl max-h-60 overflow-y-auto divide-y divide-white/5">
+                    {(destSuggestions.length > 0 || isDestSearching || destNoResults) && (
+                        <ul className="absolute z-[250] mt-1 w-full bg-[#1e1e1e]/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl max-h-56 overflow-y-auto divide-y divide-white/5">
                             {destSuggestions.map((s) => (
                                 <li
                                     key={s.placeId}
@@ -413,7 +513,7 @@ export function SearchBox(
                                         <span className="mt-0.5 text-gray-400">
                                             {s.isLocalStop ? "🚌" : (!destinationInput.trim() ? "🕒" : "📍")}
                                         </span>
-                                        <div className="flex flex-col">
+                                        <div className="flex flex-col min-w-0">
                                             <span className="text-sm text-white font-medium truncate">
                                                 {s.mainText}
                                             </span>
@@ -426,9 +526,25 @@ export function SearchBox(
                                     </div>
                                 </li>
                             ))}
+                            {isDestSearching && (
+                                <li className="px-4 py-2.5 text-xs text-gray-400 flex items-center gap-2">
+                                    <div className="w-3 h-3 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                                    <span>Searching places...</span>
+                                </li>
+                            )}
+                            {!isDestSearching && destNoResults && destSuggestions.length === 0 && (
+                                <li className="px-4 py-3 text-xs text-gray-400">
+                                    No matching stops or places found for &ldquo;{destinationInput.trim()}&rdquo;.
+                                </li>
+                            )}
                         </ul>
                     )}
                 </div>
+                {destValidationError && (
+                    <div role="alert" className="text-[11px] text-red-400 font-medium px-1">
+                        {destValidationError}
+                    </div>
+                )}
                 {destStopName && (
                     <div className="flex items-center gap-2 mt-1 px-1">
                         <span className="text-[10px] text-green-400 font-bold bg-green-500/10 px-2 py-0.5 rounded-full whitespace-nowrap">
@@ -441,10 +557,10 @@ export function SearchBox(
                 )}
             </div>
 
-            <div className="sticky bottom-0 z-[200] pt-1 pb-1 bg-[#111111]/95 md:bg-transparent">
+            <div className="sticky bottom-0 z-[150] pt-1 pb-1 bg-[#111111]/95 md:bg-transparent">
                 <button
                     onClick={handleSearch}
-                    className={`w-full h-[48px] font-bold rounded-2xl transition-all shadow-lg active:scale-[0.98] text-[16px] tracking-wide ${originInput && destinationInput ? 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white' : 'bg-[#2a2a2a] text-gray-500 cursor-not-allowed'}`}
+                    className={`w-full h-[48px] font-bold rounded-2xl transition-all shadow-lg active:scale-[0.98] text-[16px] tracking-wide ${from && to ? 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white' : 'bg-[#2a2a2a] text-gray-300 hover:bg-[#333333]'}`}
                 >
                     Find Optimal Path
                 </button>
@@ -466,7 +582,14 @@ export function SearchBox(
                         ].map(dest => (
                             <button
                                 key={dest}
-                                onClick={() => setDestinationInput(dest)}
+                                onClick={() => {
+                                    setDestinationInput(dest);
+                                    setTo("");
+                                    setDestValidationError(null);
+                                    onClearSelection?.("TO");
+                                    fetchSuggestions(dest, setDestSuggestions, setIsDestSearching, setDestNoResults);
+                                    toInputRef.current?.focus();
+                                }}
                                 className="snap-center shrink-0 h-[36px] px-4 bg-[#2a2a2a] text-gray-300 text-[13px] font-medium rounded-full border border-[#444] hover:bg-purple-500/20 hover:text-purple-400 hover:border-purple-500/30 transition-colors whitespace-nowrap"
                             >
                                 {dest}

@@ -23,4 +23,12 @@ dist-ssr
 *.sln
 *.sw?
 
+.env.playwright-mcp/
+
+# Environment secrets
 .env
+.env.*
+!.env.example
+
+# Playwright artifacts
+.playwright-mcp/

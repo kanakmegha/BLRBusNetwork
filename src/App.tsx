@@ -267,6 +267,15 @@ function App() {
                             handleSearch(from, to);
                         }}
                         onPlaceSelect={handlePlaceSelect}
+                        onClearSelection={(type) => {
+                            if (type === "FROM") {
+                                setFromStopId("");
+                                setOriginStopName(null);
+                            } else {
+                                setToStopId("");
+                                setDestStopName(null);
+                            }
+                        }}
                         onCriteriaChange={handleCriteriaChange}
                         selectedCriteria={selectedCriteria}
                         initialFrom={fromStopId}

@@ -1,5 +1,5 @@
 /// <reference types="@types/google.maps" />
-import { getActiveProvider, loadMapProvider } from "./mapLoader";
+import { getActiveProvider, getPreferredProvider, loadMapProvider, markProviderFailed } from "./mapLoader";
 import type { MapProviderType } from "./mapLoader";
 
 export interface Stop {
@@ -87,9 +87,11 @@ export interface IFullMapProvider extends IMapRenderProvider, ISearchProvider, I
 // ----------------------------------------------------
 class GoogleMapProvider implements IFullMapProvider {
     private overlays: any[] = [];
+    private container: HTMLDivElement | null = null;
 
     async initializeMap(container: HTMLDivElement, options: any): Promise<IMapInstance> {
         this.destroyMap();
+        this.container = container;
 
         const mapOptions: google.maps.MapOptions = {
             center: options.center,
@@ -241,6 +243,10 @@ class GoogleMapProvider implements IFullMapProvider {
             else o.map = null;
         });
         this.overlays = [];
+        if (this.container) {
+            this.container.innerHTML = "";
+            this.container = null;
+        }
     }
 
     async autosuggest(query: string): Promise<AutosuggestSuggestion[]> {
@@ -563,28 +569,189 @@ class MapplsMapProvider implements IFullMapProvider {
 }
 
 // ----------------------------------------------------
-// 3. LEAFLET + OPENSTREETMAP PROVIDER IMPLEMENTATION
+// 3. LEAFLET + CARTO DARK MATTER PROVIDER IMPLEMENTATION
 // ----------------------------------------------------
+// Note on CARTO basemaps: CARTO Dark Matter raster tiles are free for
+// non-commercial and low-to-moderate traffic usage with OSM + CARTO attribution.
+// High-volume commercial deployments require a commercial tile plan.
+// Note on Nominatim: Public Nominatim enforces a strict max 1 req/sec policy.
 class LeafletMapProvider implements IFullMapProvider {
     private activeMap: any = null;
+    private container: HTMLDivElement | null = null;
+    private resizeObserver: ResizeObserver | null = null;
+    private wheelCleanup: (() => void) | null = null;
     private overlays: any[] = [];
     private cachedSuggestions: Record<string, { lat: number; lng: number }> = {};
+    private geocodeCache: Record<string, { lat: number; lng: number }> = {};
+    private reverseGeocodeCache: Record<string, string> = {};
+    private lastNominatimRequestAt = 0;
+
+    private async throttleNominatim(): Promise<void> {
+        const now = Date.now();
+        const elapsed = now - this.lastNominatimRequestAt;
+        if (elapsed < 1050) {
+            await new Promise((r) => setTimeout(r, 1050 - elapsed));
+        }
+        this.lastNominatimRequestAt = Date.now();
+    }
+
+    private parseHtmlDimensions(html: string | HTMLElement): [number, number] {
+        if (typeof html !== "string") {
+            const w = parseInt(html.style?.width || "", 10);
+            const h = parseInt(html.style?.height || "", 10);
+            if (!Number.isNaN(w) && !Number.isNaN(h) && w > 0 && h > 0) {
+                return [w, h];
+            }
+            return [16, 16];
+        }
+        const wMatch = html.match(/width\s*:\s*(\d+)px/i);
+        const hMatch = html.match(/height\s*:\s*(\d+)px/i);
+        const w = wMatch ? parseInt(wMatch[1], 10) : 16;
+        const h = hMatch ? parseInt(hMatch[1], 10) : 16;
+        return [w > 0 ? w : 16, h > 0 ? h : 16];
+    }
 
     async initializeMap(container: HTMLDivElement, options: any): Promise<IMapInstance> {
         this.destroyMap();
+        this.container = container;
+        container.innerHTML = "";
 
         const L = (window as any).L;
-        const mapObj = L.map(container, {
+        const mapOptions: any = {
             zoomControl: false,
             minZoom: options.minZoom || 10,
             maxZoom: options.maxZoom || 18,
-        }).setView([options.center.lat, options.center.lng], options.zoom);
+            dragging: true,
+            touchZoom: true,
+            // Handled by custom trackpad/pinch/mouse-wheel gesture handler below
+            scrollWheelZoom: false,
+            doubleClickZoom: true,
+            boxZoom: true,
+        };
 
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        if (options.bounds) {
+            // Apply a generous buffer around the city bounds so desktop viewports at zoom 10-12
+            // can still pan smoothly without hitting a tight viewport-edge lock.
+            const latBuffer = 0.25;
+            const lngBuffer = 0.25;
+            mapOptions.maxBounds = L.latLngBounds(
+                [options.bounds.south - latBuffer, options.bounds.west - lngBuffer],
+                [options.bounds.north + latBuffer, options.bounds.east + lngBuffer]
+            );
+            mapOptions.maxBoundsViscosity = 0.5;
+        }
+
+        const mapObj = L.map(container, mapOptions).setView([options.center.lat, options.center.lng], options.zoom);
+
+        const cartoApiKey = (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_CARTO_BASEMAPS_API_KEY)
+            ? String((import.meta as any).env.VITE_CARTO_BASEMAPS_API_KEY).trim()
+            : "";
+        const keySuffix = cartoApiKey ? `?key=${encodeURIComponent(cartoApiKey)}` : "";
+        const baseTileUrl = `https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png${keySuffix}`;
+        const labelsTileUrl = `https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png${keySuffix}`;
+
+        L.tileLayer(baseTileUrl, {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
             subdomains: 'abcd',
-            maxZoom: 20
+            maxZoom: 20,
+            detectRetina: true
         }).addTo(mapObj);
+
+        // Render native CARTO dark_only_labels in a dedicated pane above routes (400) and below markers (600)
+        let labelsPaneName: string | undefined;
+        if (typeof mapObj.createPane === "function") {
+            const labelsPane = mapObj.createPane("carto-labels");
+            labelsPane.style.zIndex = "450";
+            labelsPane.style.pointerEvents = "none";
+            if (labelsPane.classList) {
+                labelsPane.classList.add("carto-labels-pane");
+            }
+            labelsPaneName = "carto-labels";
+        }
+
+        L.tileLayer(labelsTileUrl, {
+            subdomains: 'abcd',
+            maxZoom: 20,
+            detectRetina: true,
+            ...(labelsPaneName ? { pane: labelsPaneName } : {}),
+        }).addTo(mapObj);
+
+        // Custom gesture handler:
+        // - Two-finger trackpad scroll -> pan (panBy)
+        // - Trackpad pinch (ctrlKey=true) -> zoom around pointer
+        // - Physical mouse wheel (discrete vertical notched deltas) -> zoom around pointer
+        let lastTrackpadPanAt = 0;
+        let lastWheelZoomAt = 0;
+        let pinchAccum = 0;
+
+        const onWheel = (e: WheelEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const now = Date.now();
+
+            if (e.ctrlKey) {
+                pinchAccum += e.deltaY;
+                if (Math.abs(pinchAccum) >= 12 && now - lastWheelZoomAt >= 60) {
+                    const rect = container.getBoundingClientRect ? container.getBoundingClientRect() : { left: 0, top: 0 };
+                    const point = typeof L.point === "function"
+                        ? L.point(e.clientX - rect.left, e.clientY - rect.top)
+                        : [e.clientX - rect.left, e.clientY - rect.top];
+                    const step = pinchAccum < 0 ? 1 : -1;
+                    if (typeof mapObj.setZoomAround === "function") {
+                        mapObj.setZoomAround(point, mapObj.getZoom() + step, { animate: true });
+                    } else {
+                        mapObj.setZoom(mapObj.getZoom() + step);
+                    }
+                    pinchAccum = 0;
+                    lastWheelZoomAt = now;
+                }
+                return;
+            }
+
+            const isTrackpadStream = now - lastTrackpadPanAt < 250;
+            const looksLikeTrackpad =
+                e.deltaX !== 0 ||
+                (e.deltaMode === 0 && (Math.abs(e.deltaY) < 40 || !Number.isInteger(e.deltaY)));
+
+            if (looksLikeTrackpad || isTrackpadStream) {
+                lastTrackpadPanAt = now;
+                if (typeof mapObj.panBy === "function") {
+                    mapObj.panBy([e.deltaX, e.deltaY], { animate: false });
+                }
+                return;
+            }
+
+            if (now - lastWheelZoomAt >= 80 && e.deltaY !== 0) {
+                const rect = container.getBoundingClientRect ? container.getBoundingClientRect() : { left: 0, top: 0 };
+                const point = typeof L.point === "function"
+                    ? L.point(e.clientX - rect.left, e.clientY - rect.top)
+                    : [e.clientX - rect.left, e.clientY - rect.top];
+                const step = e.deltaY < 0 ? 1 : -1;
+                if (typeof mapObj.setZoomAround === "function") {
+                    mapObj.setZoomAround(point, mapObj.getZoom() + step, { animate: true });
+                } else {
+                    mapObj.setZoom(mapObj.getZoom() + step);
+                }
+                lastWheelZoomAt = now;
+            }
+        };
+
+        if (typeof container.addEventListener === "function") {
+            container.addEventListener("wheel", onWheel, { passive: false });
+            this.wheelCleanup = () => {
+                container.removeEventListener("wheel", onWheel);
+            };
+        }
+
+        if (typeof ResizeObserver !== "undefined") {
+            this.resizeObserver = new ResizeObserver(() => {
+                if (this.activeMap && typeof this.activeMap.invalidateSize === "function") {
+                    this.activeMap.invalidateSize();
+                }
+            });
+            this.resizeObserver.observe(container);
+        }
 
         this.activeMap = mapObj;
         const provider = this;
@@ -610,8 +777,16 @@ class LeafletMapProvider implements IFullMapProvider {
             fitBounds(latLngs, padding) {
                 if (latLngs.length === 0) return;
                 const bounds = L.latLngBounds(latLngs.map(p => [p.lat, p.lng]));
-                const pad = padding ? [padding.top || 40, padding.left || 40] : [40, 40];
-                mapObj.fitBounds(bounds, { padding: pad });
+                const padTopLeft: [number, number] = padding
+                    ? [padding.left ?? 20, padding.top ?? 40]
+                    : [40, 40];
+                const padBottomRight: [number, number] = padding
+                    ? [padding.right ?? 20, padding.bottom ?? 40]
+                    : [40, 40];
+                mapObj.fitBounds(bounds, {
+                    paddingTopLeft: padTopLeft,
+                    paddingBottomRight: padBottomRight,
+                });
             },
             clearOverlays() {
                 provider.overlays.forEach(o => o.remove());
@@ -620,17 +795,15 @@ class LeafletMapProvider implements IFullMapProvider {
             addMarker(markerOptions) {
                 let m;
                 if (markerOptions.html) {
-                    let htmlContent = "";
-                    if (typeof markerOptions.html === "string") {
-                        htmlContent = markerOptions.html;
-                    } else {
-                        htmlContent = markerOptions.html.outerHTML;
-                    }
+                    const [width, height] = provider.parseHtmlDimensions(markerOptions.html);
+                    const htmlContent = typeof markerOptions.html === "string"
+                        ? markerOptions.html
+                        : markerOptions.html.outerHTML;
                     const icon = L.divIcon({
                         html: htmlContent,
                         className: "custom-leaflet-marker",
-                        iconSize: [20, 20],
-                        iconAnchor: [10, 10]
+                        iconSize: [width, height],
+                        iconAnchor: [width / 2, height / 2]
                     });
                     m = L.marker([markerOptions.position.lat, markerOptions.position.lng], {
                         icon,
@@ -659,11 +832,17 @@ class LeafletMapProvider implements IFullMapProvider {
                     color: polylineOptions.strokeColor,
                     weight: polylineOptions.strokeWeight,
                     opacity: polylineOptions.strokeOpacity,
+                    lineCap: "round",
+                    lineJoin: "round",
+                    interactive: false,
                 };
                 if (polylineOptions.dashed) {
-                    lineOptions.dashArray = "6, 12";
+                    lineOptions.dashArray = "6, 10";
                 }
                 const p = L.polyline(pathCoords, lineOptions).addTo(mapObj);
+                if (polylineOptions.zIndex && polylineOptions.zIndex >= 150 && typeof p.bringToFront === "function") {
+                    p.bringToFront();
+                }
                 provider.overlays.push(p);
                 return p;
             },
@@ -681,6 +860,14 @@ class LeafletMapProvider implements IFullMapProvider {
     }
 
     destroyMap(): void {
+        if (this.wheelCleanup) {
+            this.wheelCleanup();
+            this.wheelCleanup = null;
+        }
+        if (this.resizeObserver) {
+            this.resizeObserver.disconnect();
+            this.resizeObserver = null;
+        }
         this.overlays.forEach(o => o.remove());
         this.overlays = [];
         if (this.activeMap && this.activeMap.remove) {
@@ -689,35 +876,38 @@ class LeafletMapProvider implements IFullMapProvider {
             } catch (e) {}
         }
         this.activeMap = null;
+        if (this.container) {
+            this.container.innerHTML = "";
+            this.container = null;
+        }
     }
 
     async autosuggest(query: string): Promise<AutosuggestSuggestion[]> {
+        await this.throttleNominatim();
         const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=8&countrycodes=in&viewbox=77.3,13.3,77.9,12.7&bounded=1`;
-        try {
-            const res = await fetch(url, {
-                headers: {
-                    "User-Agent": "NammaRouteBengaluru/1.0"
-                }
-            });
-            const data = await res.json();
-            return data.map((item: any) => {
-                const placeId = item.place_id.toString();
-                const lat = parseFloat(item.lat);
-                const lng = parseFloat(item.lon);
-                
-                this.cachedSuggestions[placeId] = { lat, lng };
-
-                return {
-                    placeId,
-                    description: item.display_name,
-                    mainText: item.name || item.display_name.split(",")[0],
-                    secondaryText: item.display_name.split(",").slice(1).join(",").trim()
-                };
-            });
-        } catch (e) {
-            console.error("Nominatim Autosuggest failed:", e);
-            return [];
+        const res = await fetch(url, {
+            headers: {
+                "Accept": "application/json"
+            }
+        });
+        if (!res.ok) {
+            throw new Error(`Nominatim autosuggest failed with HTTP ${res.status}`);
         }
+        const data = await res.json();
+        return data.map((item: any) => {
+            const placeId = item.place_id.toString();
+            const lat = parseFloat(item.lat);
+            const lng = parseFloat(item.lon);
+
+            this.cachedSuggestions[placeId] = { lat, lng };
+
+            return {
+                placeId,
+                description: item.display_name,
+                mainText: item.name || item.display_name.split(",")[0],
+                secondaryText: item.display_name.split(",").slice(1).join(",").trim()
+            };
+        });
     }
 
     async geocode(placeId: string, address?: string): Promise<{ lat: number; lng: number } | null> {
@@ -726,41 +916,52 @@ class LeafletMapProvider implements IFullMapProvider {
         }
 
         if (address) {
+            const cacheKey = address.trim().toLowerCase();
+            if (this.geocodeCache[cacheKey]) {
+                return this.geocodeCache[cacheKey];
+            }
+            await this.throttleNominatim();
             const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`;
-            try {
-                const res = await fetch(url, {
-                    headers: {
-                        "User-Agent": "NammaRouteBengaluru/1.0"
-                    }
-                });
-                const data = await res.json();
-                if (data && data[0]) {
-                    return {
-                        lat: parseFloat(data[0].lat),
-                        lng: parseFloat(data[0].lon)
-                    };
+            const res = await fetch(url, {
+                headers: {
+                    "Accept": "application/json"
                 }
-            } catch (e) {
-                console.error("Nominatim geocoding failed:", e);
+            });
+            if (!res.ok) {
+                throw new Error(`Nominatim geocoding failed with HTTP ${res.status}`);
+            }
+            const data = await res.json();
+            if (data && data[0]) {
+                const coords = {
+                    lat: parseFloat(data[0].lat),
+                    lng: parseFloat(data[0].lon)
+                };
+                this.geocodeCache[cacheKey] = coords;
+                return coords;
             }
         }
         return null;
     }
 
     async reverseGeocode(lat: number, lng: number): Promise<string | null> {
+        const cacheKey = `${lat.toFixed(5)},${lng.toFixed(5)}`;
+        if (this.reverseGeocodeCache[cacheKey]) {
+            return this.reverseGeocodeCache[cacheKey];
+        }
+        await this.throttleNominatim();
         const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`;
-        try {
-            const res = await fetch(url, {
-                headers: {
-                    "User-Agent": "NammaRouteBengaluru/1.0"
-                }
-            });
-            const data = await res.json();
-            if (data && data.display_name) {
-                return data.display_name;
+        const res = await fetch(url, {
+            headers: {
+                "Accept": "application/json"
             }
-        } catch (e) {
-            console.error("Nominatim reverse geocode failed:", e);
+        });
+        if (!res.ok) {
+            throw new Error(`Nominatim reverse geocode failed with HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        if (data && data.display_name) {
+            this.reverseGeocodeCache[cacheKey] = data.display_name;
+            return data.display_name;
         }
         return null;
     }
@@ -799,12 +1000,12 @@ class MapServiceOrchestrator {
 
     private async ensureProvider(): Promise<IFullMapProvider> {
         const active = getActiveProvider();
-        if (this.providerInstance && this.initializedProviderType === active) {
+        if (this.providerInstance && this.initializedProviderType === active && active !== null) {
             return this.providerInstance;
         }
 
         if (!active) {
-            const preferred = (import.meta.env.VITE_MAP_PROVIDER || "google") as MapProviderType;
+            const preferred = getPreferredProvider();
             const loaded = await loadMapProvider(preferred);
             return this.instantiateProvider(loaded);
         }
@@ -830,44 +1031,63 @@ class MapServiceOrchestrator {
         return provider.initializeMap(container, options);
     }
 
+    async fallbackFromProvider(failed: MapProviderType): Promise<MapProviderType> {
+        await this.destroyMap();
+        markProviderFailed(failed);
+        const nextProvider = await loadMapProvider(getPreferredProvider());
+        this.instantiateProvider(nextProvider);
+        return nextProvider;
+    }
+
     async destroyMap(): Promise<void> {
         if (this.providerInstance) {
             this.providerInstance.destroyMap();
+            this.providerInstance = null;
+            this.initializedProviderType = null;
         }
     }
 
-    async autosuggest(query: string, localStops: Stop[] = []): Promise<AutosuggestSuggestion[]> {
+    getLocalStopSuggestions(query: string, localStops: Stop[] = []): AutosuggestSuggestion[] {
         const normalizedQuery = query.toLowerCase().trim();
-        
-        const localMatches: AutosuggestSuggestion[] = localStops
+        if (!normalizedQuery) return [];
+        return localStops
             .filter(stop => stop.stop_name.toLowerCase().includes(normalizedQuery))
             .slice(0, 5)
             .map(stop => ({
                 placeId: stop.stop_id,
                 description: stop.stop_name,
                 mainText: stop.stop_name,
-                secondaryText: stop.busNumbers && stop.busNumbers.length > 0 
-                    ? `Buses: ${stop.busNumbers.slice(0, 3).join(", ")}` 
+                secondaryText: stop.busNumbers && stop.busNumbers.length > 0
+                    ? `Buses: ${stop.busNumbers.slice(0, 3).join(", ")}`
                     : (stop.line_code ? `${stop.line_code} Line Metro` : "Bus Stop"),
                 isLocalStop: true,
                 stop
             }));
+    }
 
-        if (!query.trim()) {
-            return localMatches;
+    async autosuggestWithStatus(
+        query: string,
+        localStops: Stop[] = []
+    ): Promise<{ suggestions: AutosuggestSuggestion[]; remoteError: string | null }> {
+        const localMatches = this.getLocalStopSuggestions(query, localStops);
+
+        if (query.trim().length < 2) {
+            return { suggestions: localMatches, remoteError: null };
         }
 
         let remoteMatches: AutosuggestSuggestion[] = [];
+        let remoteError: string | null = null;
         try {
             const provider = await this.ensureProvider();
             remoteMatches = await provider.autosuggest(query);
-        } catch (e) {
-            console.warn("[MapService] Active provider autosuggest failed. Falling back strictly to local stops:", e);
+        } catch (e: any) {
+            remoteError = e?.message || "Location search temporarily unavailable";
+            console.warn("[MapService] Active provider autosuggest failed. Returning local stop matches:", e);
         }
 
         const combined = [...localMatches];
         remoteMatches.forEach(rm => {
-            const exists = combined.some(c => 
+            const exists = combined.some(c =>
                 c.description.toLowerCase().trim() === rm.description.toLowerCase().trim() ||
                 c.mainText.toLowerCase().trim() === rm.mainText.toLowerCase().trim()
             );
@@ -876,7 +1096,12 @@ class MapServiceOrchestrator {
             }
         });
 
-        return combined.slice(0, 10);
+        return { suggestions: combined.slice(0, 10), remoteError };
+    }
+
+    async autosuggest(query: string, localStops: Stop[] = []): Promise<AutosuggestSuggestion[]> {
+        const { suggestions } = await this.autosuggestWithStatus(query, localStops);
+        return suggestions;
     }
 
     async geocode(placeId: string, address?: string): Promise<{ lat: number; lng: number } | null> {
